@@ -36,7 +36,7 @@ export function Navbar() {
         <div className="flex h-16 items-center justify-between">
           <Link to="/" className="flex items-center gap-2 text-primary font-bold text-xl">
             <Code2 className="h-6 w-6" />
-            <span>CodeVault</span>
+            <span>CodeLib</span>
           </Link>
 
           <div className="flex items-center gap-2">
