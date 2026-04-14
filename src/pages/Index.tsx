@@ -28,7 +28,7 @@ export default function Index() {
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
         <div className="text-center mb-12">
           <h1 className="text-4xl font-bold text-foreground mb-3">
-            Code <span className="text-primary">Vault</span>
+            Code <span className="text-primary">Lib</span>
           </h1>
           <p className="text-muted-foreground text-lg max-w-2xl mx-auto">
             Browse organized programming topics, subtopics, and ready-to-run code examples.
