@@ -22,6 +22,7 @@ export type Database = {
           id: string
           language: string
           sort_order: number | null
+          sub_subtopic_id: string | null
           subtopic_id: string
           title: string
           updated_at: string | null
@@ -33,6 +34,7 @@ export type Database = {
           id?: string
           language?: string
           sort_order?: number | null
+          sub_subtopic_id?: string | null
           subtopic_id: string
           title: string
           updated_at?: string | null
@@ -44,13 +46,59 @@ export type Database = {
           id?: string
           language?: string
           sort_order?: number | null
+          sub_subtopic_id?: string | null
           subtopic_id?: string
           title?: string
           updated_at?: string | null
         }
         Relationships: [
           {
+            foreignKeyName: "programs_sub_subtopic_id_fkey"
+            columns: ["sub_subtopic_id"]
+            isOneToOne: false
+            referencedRelation: "sub_subtopics"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "programs_subtopic_id_fkey"
+            columns: ["subtopic_id"]
+            isOneToOne: false
+            referencedRelation: "subtopics"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      sub_subtopics: {
+        Row: {
+          created_at: string | null
+          description: string | null
+          id: string
+          sort_order: number | null
+          subtopic_id: string
+          title: string
+          updated_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          description?: string | null
+          id?: string
+          sort_order?: number | null
+          subtopic_id: string
+          title: string
+          updated_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          description?: string | null
+          id?: string
+          sort_order?: number | null
+          subtopic_id?: string
+          title?: string
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "sub_subtopics_subtopic_id_fkey"
             columns: ["subtopic_id"]
             isOneToOne: false
             referencedRelation: "subtopics"

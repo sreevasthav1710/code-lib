@@ -3,11 +3,19 @@ import { useParams, Link } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Navbar } from "@/components/Navbar";
 import { CodeBlock } from "@/components/CodeBlock";
-import { ChevronLeft, ChevronDown, ChevronRight, FileCode } from "lucide-react";
+import { ChevronLeft, ChevronDown, ChevronRight, FileCode, Layers, Code } from "lucide-react";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 
 interface Subtopic {
   id: string;
+  title: string;
+  description: string | null;
+}
+
+interface SubSubtopic {
+  id: string;
+  subtopic_id: string;
   title: string;
   description: string | null;
 }
@@ -18,6 +26,7 @@ interface Program {
   description: string | null;
   language: string;
   code: string;
+  sub_subtopic_id: string | null;
   subtopic_id: string;
 }
 
@@ -25,8 +34,10 @@ export default function TopicPage() {
   const { topicId } = useParams();
   const [topicTitle, setTopicTitle] = useState("");
   const [subtopics, setSubtopics] = useState<Subtopic[]>([]);
+  const [subSubtopics, setSubSubtopics] = useState<SubSubtopic[]>([]);
   const [programs, setPrograms] = useState<Program[]>([]);
   const [openSubtopics, setOpenSubtopics] = useState<Set<string>>(new Set());
+  const [selectedProgram, setSelectedProgram] = useState<Program | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -34,14 +45,19 @@ export default function TopicPage() {
     Promise.all([
       supabase.from("topics").select("title").eq("id", topicId).single(),
       supabase.from("subtopics").select("*").eq("topic_id", topicId).order("sort_order"),
-      supabase.from("programs").select("*").order("sort_order"),
-    ]).then(([topicRes, subRes, progRes]) => {
+    ]).then(async ([topicRes, subRes]) => {
       setTopicTitle(topicRes.data?.title || "");
       const subs = subRes.data || [];
       setSubtopics(subs);
-      // Filter programs to only those belonging to this topic's subtopics
-      const subIds = new Set(subs.map((s) => s.id));
-      setPrograms((progRes.data || []).filter((p) => subIds.has(p.subtopic_id)));
+      const subIds = subs.map((s) => s.id);
+      if (subIds.length > 0) {
+        const [ssRes, progRes] = await Promise.all([
+          supabase.from("sub_subtopics").select("*").in("subtopic_id", subIds).order("sort_order"),
+          supabase.from("programs").select("*").in("subtopic_id", subIds).order("sort_order"),
+        ]);
+        setSubSubtopics(ssRes.data || []);
+        setPrograms(progRes.data || []);
+      }
       setLoading(false);
     });
   }, [topicId]);
@@ -67,59 +83,65 @@ export default function TopicPage() {
 
         {loading ? (
           <div className="space-y-4">
-            {[1, 2].map((i) => (
-              <div key={i} className="h-16 rounded-lg bg-muted animate-pulse" />
-            ))}
+            {[1, 2].map((i) => <div key={i} className="h-16 rounded-lg bg-muted animate-pulse" />)}
           </div>
         ) : subtopics.length === 0 ? (
           <p className="text-muted-foreground text-center py-12">No subtopics yet.</p>
         ) : (
           <div className="space-y-4">
             {subtopics.map((sub) => {
-              const subPrograms = programs.filter((p) => p.subtopic_id === sub.id);
+              const childSubSubtopics = subSubtopics.filter((ss) => ss.subtopic_id === sub.id);
               return (
-                <Collapsible
-                  key={sub.id}
-                  open={openSubtopics.has(sub.id)}
-                  onOpenChange={() => toggleSubtopic(sub.id)}
-                >
+                <Collapsible key={sub.id} open={openSubtopics.has(sub.id)} onOpenChange={() => toggleSubtopic(sub.id)}>
                   <CollapsibleTrigger className="w-full">
                     <div className="flex items-center justify-between p-4 rounded-lg bg-card border border-border hover:border-primary/40 transition-colors">
                       <div className="flex items-center gap-3">
                         <FileCode className="h-5 w-5 text-primary" />
                         <div className="text-left">
                           <h2 className="font-semibold text-foreground">{sub.title}</h2>
-                          {sub.description && (
-                            <p className="text-sm text-muted-foreground">{sub.description}</p>
-                          )}
+                          {sub.description && <p className="text-sm text-muted-foreground">{sub.description}</p>}
                         </div>
                       </div>
                       <div className="flex items-center gap-2">
                         <span className="text-xs text-muted-foreground bg-muted px-2 py-1 rounded-full">
-                          {subPrograms.length} program{subPrograms.length !== 1 ? "s" : ""}
+                          {childSubSubtopics.length} sub-topic{childSubSubtopics.length !== 1 ? "s" : ""}
                         </span>
-                        {openSubtopics.has(sub.id) ? (
-                          <ChevronDown className="h-5 w-5 text-muted-foreground" />
-                        ) : (
-                          <ChevronRight className="h-5 w-5 text-muted-foreground" />
-                        )}
+                        {openSubtopics.has(sub.id) ? <ChevronDown className="h-5 w-5 text-muted-foreground" /> : <ChevronRight className="h-5 w-5 text-muted-foreground" />}
                       </div>
                     </div>
                   </CollapsibleTrigger>
                   <CollapsibleContent>
-                    <div className="mt-3 space-y-6 pl-4 border-l-2 border-primary/20 ml-6">
-                      {subPrograms.length === 0 ? (
-                        <p className="text-muted-foreground text-sm py-4">No programs yet.</p>
+                    <div className="mt-3 space-y-2 pl-4 border-l-2 border-primary/20 ml-6">
+                      {childSubSubtopics.length === 0 ? (
+                        <p className="text-muted-foreground text-sm py-4">No sub-subtopics yet.</p>
                       ) : (
-                        subPrograms.map((prog) => (
-                          <div key={prog.id} className="space-y-2">
-                            <h3 className="font-medium text-foreground">{prog.title}</h3>
-                            {prog.description && (
-                              <p className="text-sm text-muted-foreground">{prog.description}</p>
-                            )}
-                            <CodeBlock code={prog.code} language={prog.language} title={prog.title} />
-                          </div>
-                        ))
+                        childSubSubtopics.map((ss) => {
+                          const ssPrograms = programs.filter((p) => p.sub_subtopic_id === ss.id);
+                          return (
+                            <div key={ss.id} className="space-y-1">
+                              <div className="flex items-center gap-2 py-2 px-3">
+                                <Layers className="h-4 w-4 text-accent" />
+                                <h3 className="font-medium text-foreground text-sm">{ss.title}</h3>
+                                {ss.description && <span className="text-xs text-muted-foreground">— {ss.description}</span>}
+                              </div>
+                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pl-6">
+                                {ssPrograms.map((prog) => (
+                                  <button
+                                    key={prog.id}
+                                    onClick={() => setSelectedProgram(prog)}
+                                    className="flex items-center gap-2 p-3 rounded-lg bg-muted/50 border border-border hover:border-primary/50 hover:bg-muted transition-all text-left group"
+                                  >
+                                    <Code className="h-4 w-4 text-primary group-hover:scale-110 transition-transform" />
+                                    <div>
+                                      <p className="text-sm font-medium text-foreground group-hover:text-primary transition-colors">{prog.title}</p>
+                                      {prog.description && <p className="text-xs text-muted-foreground line-clamp-1">{prog.description}</p>}
+                                    </div>
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+                          );
+                        })
                       )}
                     </div>
                   </CollapsibleContent>
@@ -129,6 +151,25 @@ export default function TopicPage() {
           </div>
         )}
       </main>
+
+      {/* Code Modal */}
+      <Dialog open={!!selectedProgram} onOpenChange={() => setSelectedProgram(null)}>
+        <DialogContent className="max-w-3xl max-h-[85vh] overflow-y-auto">
+          {selectedProgram && (
+            <>
+              <DialogHeader>
+                <DialogTitle>{selectedProgram.title}</DialogTitle>
+                {selectedProgram.description && (
+                  <p className="text-sm text-muted-foreground">{selectedProgram.description}</p>
+                )}
+              </DialogHeader>
+              <div className="mt-4">
+                <CodeBlock code={selectedProgram.code} language={selectedProgram.language} title={selectedProgram.title} />
+              </div>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
