@@ -16,7 +16,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 
 interface Topic { id: string; title: string; description: string | null; sort_order: number | null; }
 interface Subtopic { id: string; topic_id: string; title: string; description: string | null; sort_order: number | null; }
-interface Program { id: string; subtopic_id: string; title: string; description: string | null; language: string; code: string; sort_order: number | null; }
+interface SubSubtopic { id: string; subtopic_id: string; title: string; description: string | null; sort_order: number | null; }
+interface Program { id: string; subtopic_id: string; sub_subtopic_id: string | null; title: string; description: string | null; language: string; code: string; sort_order: number | null; }
 
 export default function AdminPage() {
   const { isAdmin, loading: authLoading } = useAuth();
@@ -25,125 +26,119 @@ export default function AdminPage() {
 
   const [topics, setTopics] = useState<Topic[]>([]);
   const [subtopics, setSubtopics] = useState<Subtopic[]>([]);
+  const [subSubtopics, setSubSubtopics] = useState<SubSubtopic[]>([]);
   const [programs, setPrograms] = useState<Program[]>([]);
 
-  // Form state
   const [topicForm, setTopicForm] = useState({ title: "", description: "", sort_order: 0 });
   const [subtopicForm, setSubtopicForm] = useState({ topic_id: "", title: "", description: "", sort_order: 0 });
-  const [programForm, setProgramForm] = useState({ subtopic_id: "", title: "", description: "", language: "c", code: "", sort_order: 0 });
+  const [subSubtopicForm, setSubSubtopicForm] = useState({ subtopic_id: "", title: "", description: "", sort_order: 0 });
+  const [programForm, setProgramForm] = useState({ subtopic_id: "", sub_subtopic_id: "", title: "", description: "", language: "c", code: "", sort_order: 0 });
 
-  // Edit state
   const [editingTopic, setEditingTopic] = useState<Topic | null>(null);
   const [editingSubtopic, setEditingSubtopic] = useState<Subtopic | null>(null);
+  const [editingSubSubtopic, setEditingSubSubtopic] = useState<SubSubtopic | null>(null);
   const [editingProgram, setEditingProgram] = useState<Program | null>(null);
 
-  useEffect(() => {
-    if (!authLoading && !isAdmin) navigate("/");
-  }, [isAdmin, authLoading, navigate]);
+  useEffect(() => { if (!authLoading && !isAdmin) navigate("/"); }, [isAdmin, authLoading, navigate]);
 
   const fetchAll = async () => {
-    const [t, s, p] = await Promise.all([
+    const [t, s, ss, p] = await Promise.all([
       supabase.from("topics").select("*").order("sort_order"),
       supabase.from("subtopics").select("*").order("sort_order"),
+      supabase.from("sub_subtopics").select("*").order("sort_order"),
       supabase.from("programs").select("*").order("sort_order"),
     ]);
     setTopics(t.data || []);
     setSubtopics(s.data || []);
+    setSubSubtopics(ss.data || []);
     setPrograms(p.data || []);
   };
 
   useEffect(() => { if (isAdmin) fetchAll(); }, [isAdmin]);
 
-  // CRUD handlers
+  // Topic CRUD
   const addTopic = async () => {
     const { error } = await supabase.from("topics").insert(topicForm);
     if (error) { toast({ title: "Error", description: error.message, variant: "destructive" }); return; }
-    toast({ title: "Topic added!" });
-    setTopicForm({ title: "", description: "", sort_order: 0 });
-    fetchAll();
+    toast({ title: "Topic added!" }); setTopicForm({ title: "", description: "", sort_order: 0 }); fetchAll();
   };
-
   const updateTopic = async () => {
     if (!editingTopic) return;
-    const { error } = await supabase.from("topics").update({
-      title: editingTopic.title,
-      description: editingTopic.description,
-      sort_order: editingTopic.sort_order,
-    }).eq("id", editingTopic.id);
+    const { error } = await supabase.from("topics").update({ title: editingTopic.title, description: editingTopic.description, sort_order: editingTopic.sort_order }).eq("id", editingTopic.id);
     if (error) { toast({ title: "Error", description: error.message, variant: "destructive" }); return; }
-    toast({ title: "Topic updated!" });
-    setEditingTopic(null);
-    fetchAll();
+    toast({ title: "Topic updated!" }); setEditingTopic(null); fetchAll();
   };
+  const deleteTopic = async (id: string) => { await supabase.from("topics").delete().eq("id", id); toast({ title: "Topic deleted" }); fetchAll(); };
 
-  const deleteTopic = async (id: string) => {
-    await supabase.from("topics").delete().eq("id", id);
-    toast({ title: "Topic deleted" });
-    fetchAll();
-  };
-
+  // Subtopic CRUD
   const addSubtopic = async () => {
     if (!subtopicForm.topic_id) { toast({ title: "Select a topic first", variant: "destructive" }); return; }
     const { error } = await supabase.from("subtopics").insert(subtopicForm);
     if (error) { toast({ title: "Error", description: error.message, variant: "destructive" }); return; }
-    toast({ title: "Subtopic added!" });
-    setSubtopicForm({ topic_id: "", title: "", description: "", sort_order: 0 });
-    fetchAll();
+    toast({ title: "Subtopic added!" }); setSubtopicForm({ topic_id: "", title: "", description: "", sort_order: 0 }); fetchAll();
   };
-
   const updateSubtopic = async () => {
     if (!editingSubtopic) return;
-    const { error } = await supabase.from("subtopics").update({
-      title: editingSubtopic.title,
-      description: editingSubtopic.description,
-      topic_id: editingSubtopic.topic_id,
-      sort_order: editingSubtopic.sort_order,
-    }).eq("id", editingSubtopic.id);
+    const { error } = await supabase.from("subtopics").update({ title: editingSubtopic.title, description: editingSubtopic.description, topic_id: editingSubtopic.topic_id, sort_order: editingSubtopic.sort_order }).eq("id", editingSubtopic.id);
     if (error) { toast({ title: "Error", description: error.message, variant: "destructive" }); return; }
-    toast({ title: "Subtopic updated!" });
-    setEditingSubtopic(null);
-    fetchAll();
+    toast({ title: "Subtopic updated!" }); setEditingSubtopic(null); fetchAll();
   };
+  const deleteSubtopic = async (id: string) => { await supabase.from("subtopics").delete().eq("id", id); toast({ title: "Subtopic deleted" }); fetchAll(); };
 
-  const deleteSubtopic = async (id: string) => {
-    await supabase.from("subtopics").delete().eq("id", id);
-    toast({ title: "Subtopic deleted" });
-    fetchAll();
+  // Sub-Subtopic CRUD
+  const addSubSubtopic = async () => {
+    if (!subSubtopicForm.subtopic_id) { toast({ title: "Select a subtopic first", variant: "destructive" }); return; }
+    const { error } = await supabase.from("sub_subtopics").insert(subSubtopicForm);
+    if (error) { toast({ title: "Error", description: error.message, variant: "destructive" }); return; }
+    toast({ title: "Sub-subtopic added!" }); setSubSubtopicForm({ subtopic_id: "", title: "", description: "", sort_order: 0 }); fetchAll();
   };
+  const updateSubSubtopic = async () => {
+    if (!editingSubSubtopic) return;
+    const { error } = await supabase.from("sub_subtopics").update({ title: editingSubSubtopic.title, description: editingSubSubtopic.description, subtopic_id: editingSubSubtopic.subtopic_id, sort_order: editingSubSubtopic.sort_order }).eq("id", editingSubSubtopic.id);
+    if (error) { toast({ title: "Error", description: error.message, variant: "destructive" }); return; }
+    toast({ title: "Sub-subtopic updated!" }); setEditingSubSubtopic(null); fetchAll();
+  };
+  const deleteSubSubtopic = async (id: string) => { await supabase.from("sub_subtopics").delete().eq("id", id); toast({ title: "Sub-subtopic deleted" }); fetchAll(); };
 
+  // Program CRUD
   const addProgram = async () => {
-    if (!programForm.subtopic_id) { toast({ title: "Select a subtopic first", variant: "destructive" }); return; }
-    const { error } = await supabase.from("programs").insert(programForm);
+    if (!programForm.sub_subtopic_id) { toast({ title: "Select a sub-subtopic first", variant: "destructive" }); return; }
+    // Find the parent subtopic_id from the sub_subtopic
+    const parentSS = subSubtopics.find(ss => ss.id === programForm.sub_subtopic_id);
+    const { error } = await supabase.from("programs").insert({
+      ...programForm,
+      subtopic_id: parentSS?.subtopic_id || programForm.subtopic_id,
+    });
     if (error) { toast({ title: "Error", description: error.message, variant: "destructive" }); return; }
-    toast({ title: "Program added!" });
-    setProgramForm({ subtopic_id: "", title: "", description: "", language: "c", code: "", sort_order: 0 });
-    fetchAll();
+    toast({ title: "Program added!" }); setProgramForm({ subtopic_id: "", sub_subtopic_id: "", title: "", description: "", language: "c", code: "", sort_order: 0 }); fetchAll();
   };
-
   const updateProgram = async () => {
     if (!editingProgram) return;
     const { error } = await supabase.from("programs").update({
-      title: editingProgram.title,
-      description: editingProgram.description,
-      subtopic_id: editingProgram.subtopic_id,
-      language: editingProgram.language,
-      code: editingProgram.code,
-      sort_order: editingProgram.sort_order,
+      title: editingProgram.title, description: editingProgram.description,
+      sub_subtopic_id: editingProgram.sub_subtopic_id, subtopic_id: editingProgram.subtopic_id,
+      language: editingProgram.language, code: editingProgram.code, sort_order: editingProgram.sort_order,
     }).eq("id", editingProgram.id);
     if (error) { toast({ title: "Error", description: error.message, variant: "destructive" }); return; }
-    toast({ title: "Program updated!" });
-    setEditingProgram(null);
-    fetchAll();
+    toast({ title: "Program updated!" }); setEditingProgram(null); fetchAll();
   };
-
-  const deleteProgram = async (id: string) => {
-    await supabase.from("programs").delete().eq("id", id);
-    toast({ title: "Program deleted" });
-    fetchAll();
-  };
+  const deleteProgram = async (id: string) => { await supabase.from("programs").delete().eq("id", id); toast({ title: "Program deleted" }); fetchAll(); };
 
   if (authLoading) return <div className="min-h-screen bg-background flex items-center justify-center text-foreground">Loading...</div>;
   if (!isAdmin) return null;
+
+  const ItemRow = ({ title, subtitle, onEdit, onDelete }: { title: string; subtitle?: string; onEdit: () => void; onDelete: () => void }) => (
+    <div className="flex items-center justify-between p-4 rounded-lg bg-card border border-border">
+      <div>
+        <h3 className="font-medium text-foreground">{title}</h3>
+        {subtitle && <p className="text-xs text-muted-foreground">{subtitle}</p>}
+      </div>
+      <div className="flex gap-2">
+        <Button variant="ghost" size="icon" onClick={onEdit}><Pencil className="h-4 w-4" /></Button>
+        <Button variant="ghost" size="icon" onClick={onDelete} className="text-destructive"><Trash2 className="h-4 w-4" /></Button>
+      </div>
+    </div>
+  );
 
   return (
     <div className="min-h-screen bg-background">
@@ -155,6 +150,7 @@ export default function AdminPage() {
           <TabsList className="mb-6">
             <TabsTrigger value="topics">Topics</TabsTrigger>
             <TabsTrigger value="subtopics">Subtopics</TabsTrigger>
+            <TabsTrigger value="subsubtopics">Sub-Subtopics</TabsTrigger>
             <TabsTrigger value="programs">Programs</TabsTrigger>
           </TabsList>
 
@@ -163,55 +159,32 @@ export default function AdminPage() {
             <Card className="mb-6">
               <CardHeader><CardTitle className="text-lg">Add Topic</CardTitle></CardHeader>
               <CardContent className="space-y-3">
-                <div>
-                  <Label>Title</Label>
-                  <Input value={topicForm.title} onChange={(e) => setTopicForm({ ...topicForm, title: e.target.value })} />
-                </div>
-                <div>
-                  <Label>Description</Label>
-                  <Input value={topicForm.description} onChange={(e) => setTopicForm({ ...topicForm, description: e.target.value })} />
-                </div>
-                <div>
-                  <Label>Sort Order</Label>
-                  <Input type="number" value={topicForm.sort_order} onChange={(e) => setTopicForm({ ...topicForm, sort_order: Number(e.target.value) })} />
-                </div>
+                <div><Label>Title</Label><Input value={topicForm.title} onChange={(e) => setTopicForm({ ...topicForm, title: e.target.value })} /></div>
+                <div><Label>Description</Label><Input value={topicForm.description} onChange={(e) => setTopicForm({ ...topicForm, description: e.target.value })} /></div>
+                <div><Label>Sort Order</Label><Input type="number" value={topicForm.sort_order} onChange={(e) => setTopicForm({ ...topicForm, sort_order: Number(e.target.value) })} /></div>
                 <Button onClick={addTopic} disabled={!topicForm.title}><Plus className="h-4 w-4 mr-1" />Add Topic</Button>
               </CardContent>
             </Card>
-
             <div className="space-y-3">
               {topics.map((t) => (
-                <div key={t.id} className="flex items-center justify-between p-4 rounded-lg bg-card border border-border">
-                  <div>
-                    <h3 className="font-medium text-foreground">{t.title}</h3>
-                    {t.description && <p className="text-sm text-muted-foreground">{t.description}</p>}
-                  </div>
-                  <div className="flex gap-2">
-                    <Dialog>
-                      <DialogTrigger asChild>
-                        <Button variant="ghost" size="icon" onClick={() => setEditingTopic({ ...t })}>
-                          <Pencil className="h-4 w-4" />
-                        </Button>
-                      </DialogTrigger>
-                      <DialogContent>
-                        <DialogHeader><DialogTitle>Edit Topic</DialogTitle></DialogHeader>
-                        {editingTopic && (
-                          <div className="space-y-3">
-                            <div><Label>Title</Label><Input value={editingTopic.title} onChange={(e) => setEditingTopic({ ...editingTopic, title: e.target.value })} /></div>
-                            <div><Label>Description</Label><Input value={editingTopic.description || ""} onChange={(e) => setEditingTopic({ ...editingTopic, description: e.target.value })} /></div>
-                            <div><Label>Sort Order</Label><Input type="number" value={editingTopic.sort_order || 0} onChange={(e) => setEditingTopic({ ...editingTopic, sort_order: Number(e.target.value) })} /></div>
-                            <Button onClick={updateTopic}>Save Changes</Button>
-                          </div>
-                        )}
-                      </DialogContent>
-                    </Dialog>
-                    <Button variant="ghost" size="icon" onClick={() => deleteTopic(t.id)} className="text-destructive">
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
-                  </div>
+                <div key={t.id}>
+                  <ItemRow title={t.title} subtitle={t.description || undefined} onEdit={() => setEditingTopic({ ...t })} onDelete={() => deleteTopic(t.id)} />
                 </div>
               ))}
             </div>
+            <Dialog open={!!editingTopic} onOpenChange={(o) => !o && setEditingTopic(null)}>
+              <DialogContent>
+                <DialogHeader><DialogTitle>Edit Topic</DialogTitle></DialogHeader>
+                {editingTopic && (
+                  <div className="space-y-3">
+                    <div><Label>Title</Label><Input value={editingTopic.title} onChange={(e) => setEditingTopic({ ...editingTopic, title: e.target.value })} /></div>
+                    <div><Label>Description</Label><Input value={editingTopic.description || ""} onChange={(e) => setEditingTopic({ ...editingTopic, description: e.target.value })} /></div>
+                    <div><Label>Sort Order</Label><Input type="number" value={editingTopic.sort_order || 0} onChange={(e) => setEditingTopic({ ...editingTopic, sort_order: Number(e.target.value) })} /></div>
+                    <Button onClick={updateTopic}>Save Changes</Button>
+                  </div>
+                )}
+              </DialogContent>
+            </Dialog>
           </TabsContent>
 
           {/* SUBTOPICS */}
@@ -223,9 +196,7 @@ export default function AdminPage() {
                   <Label>Parent Topic</Label>
                   <Select value={subtopicForm.topic_id} onValueChange={(v) => setSubtopicForm({ ...subtopicForm, topic_id: v })}>
                     <SelectTrigger><SelectValue placeholder="Select topic" /></SelectTrigger>
-                    <SelectContent>
-                      {topics.map((t) => <SelectItem key={t.id} value={t.id}>{t.title}</SelectItem>)}
-                    </SelectContent>
+                    <SelectContent>{topics.map((t) => <SelectItem key={t.id} value={t.id}>{t.title}</SelectItem>)}</SelectContent>
                   </Select>
                 </div>
                 <div><Label>Title</Label><Input value={subtopicForm.title} onChange={(e) => setSubtopicForm({ ...subtopicForm, title: e.target.value })} /></div>
@@ -234,44 +205,74 @@ export default function AdminPage() {
                 <Button onClick={addSubtopic} disabled={!subtopicForm.title || !subtopicForm.topic_id}><Plus className="h-4 w-4 mr-1" />Add Subtopic</Button>
               </CardContent>
             </Card>
-
             <div className="space-y-3">
               {subtopics.map((s) => (
-                <div key={s.id} className="flex items-center justify-between p-4 rounded-lg bg-card border border-border">
-                  <div>
-                    <h3 className="font-medium text-foreground">{s.title}</h3>
-                    <p className="text-xs text-muted-foreground">Topic: {topics.find((t) => t.id === s.topic_id)?.title}</p>
-                  </div>
-                  <div className="flex gap-2">
-                    <Dialog>
-                      <DialogTrigger asChild>
-                        <Button variant="ghost" size="icon" onClick={() => setEditingSubtopic({ ...s })}>
-                          <Pencil className="h-4 w-4" />
-                        </Button>
-                      </DialogTrigger>
-                      <DialogContent>
-                        <DialogHeader><DialogTitle>Edit Subtopic</DialogTitle></DialogHeader>
-                        {editingSubtopic && (
-                          <div className="space-y-3">
-                            <div>
-                              <Label>Parent Topic</Label>
-                              <Select value={editingSubtopic.topic_id} onValueChange={(v) => setEditingSubtopic({ ...editingSubtopic, topic_id: v })}>
-                                <SelectTrigger><SelectValue /></SelectTrigger>
-                                <SelectContent>{topics.map((t) => <SelectItem key={t.id} value={t.id}>{t.title}</SelectItem>)}</SelectContent>
-                              </Select>
-                            </div>
-                            <div><Label>Title</Label><Input value={editingSubtopic.title} onChange={(e) => setEditingSubtopic({ ...editingSubtopic, title: e.target.value })} /></div>
-                            <div><Label>Description</Label><Input value={editingSubtopic.description || ""} onChange={(e) => setEditingSubtopic({ ...editingSubtopic, description: e.target.value })} /></div>
-                            <Button onClick={updateSubtopic}>Save Changes</Button>
-                          </div>
-                        )}
-                      </DialogContent>
-                    </Dialog>
-                    <Button variant="ghost" size="icon" onClick={() => deleteSubtopic(s.id)} className="text-destructive"><Trash2 className="h-4 w-4" /></Button>
-                  </div>
-                </div>
+                <ItemRow key={s.id} title={s.title} subtitle={`Topic: ${topics.find((t) => t.id === s.topic_id)?.title}`} onEdit={() => setEditingSubtopic({ ...s })} onDelete={() => deleteSubtopic(s.id)} />
               ))}
             </div>
+            <Dialog open={!!editingSubtopic} onOpenChange={(o) => !o && setEditingSubtopic(null)}>
+              <DialogContent>
+                <DialogHeader><DialogTitle>Edit Subtopic</DialogTitle></DialogHeader>
+                {editingSubtopic && (
+                  <div className="space-y-3">
+                    <div>
+                      <Label>Parent Topic</Label>
+                      <Select value={editingSubtopic.topic_id} onValueChange={(v) => setEditingSubtopic({ ...editingSubtopic, topic_id: v })}>
+                        <SelectTrigger><SelectValue /></SelectTrigger>
+                        <SelectContent>{topics.map((t) => <SelectItem key={t.id} value={t.id}>{t.title}</SelectItem>)}</SelectContent>
+                      </Select>
+                    </div>
+                    <div><Label>Title</Label><Input value={editingSubtopic.title} onChange={(e) => setEditingSubtopic({ ...editingSubtopic, title: e.target.value })} /></div>
+                    <div><Label>Description</Label><Input value={editingSubtopic.description || ""} onChange={(e) => setEditingSubtopic({ ...editingSubtopic, description: e.target.value })} /></div>
+                    <Button onClick={updateSubtopic}>Save Changes</Button>
+                  </div>
+                )}
+              </DialogContent>
+            </Dialog>
+          </TabsContent>
+
+          {/* SUB-SUBTOPICS */}
+          <TabsContent value="subsubtopics">
+            <Card className="mb-6">
+              <CardHeader><CardTitle className="text-lg">Add Sub-Subtopic</CardTitle></CardHeader>
+              <CardContent className="space-y-3">
+                <div>
+                  <Label>Parent Subtopic</Label>
+                  <Select value={subSubtopicForm.subtopic_id} onValueChange={(v) => setSubSubtopicForm({ ...subSubtopicForm, subtopic_id: v })}>
+                    <SelectTrigger><SelectValue placeholder="Select subtopic" /></SelectTrigger>
+                    <SelectContent>{subtopics.map((s) => <SelectItem key={s.id} value={s.id}>{topics.find(t => t.id === s.topic_id)?.title} → {s.title}</SelectItem>)}</SelectContent>
+                  </Select>
+                </div>
+                <div><Label>Title</Label><Input value={subSubtopicForm.title} onChange={(e) => setSubSubtopicForm({ ...subSubtopicForm, title: e.target.value })} /></div>
+                <div><Label>Description</Label><Input value={subSubtopicForm.description} onChange={(e) => setSubSubtopicForm({ ...subSubtopicForm, description: e.target.value })} /></div>
+                <div><Label>Sort Order</Label><Input type="number" value={subSubtopicForm.sort_order} onChange={(e) => setSubSubtopicForm({ ...subSubtopicForm, sort_order: Number(e.target.value) })} /></div>
+                <Button onClick={addSubSubtopic} disabled={!subSubtopicForm.title || !subSubtopicForm.subtopic_id}><Plus className="h-4 w-4 mr-1" />Add Sub-Subtopic</Button>
+              </CardContent>
+            </Card>
+            <div className="space-y-3">
+              {subSubtopics.map((ss) => (
+                <ItemRow key={ss.id} title={ss.title} subtitle={`Subtopic: ${subtopics.find((s) => s.id === ss.subtopic_id)?.title}`} onEdit={() => setEditingSubSubtopic({ ...ss })} onDelete={() => deleteSubSubtopic(ss.id)} />
+              ))}
+            </div>
+            <Dialog open={!!editingSubSubtopic} onOpenChange={(o) => !o && setEditingSubSubtopic(null)}>
+              <DialogContent>
+                <DialogHeader><DialogTitle>Edit Sub-Subtopic</DialogTitle></DialogHeader>
+                {editingSubSubtopic && (
+                  <div className="space-y-3">
+                    <div>
+                      <Label>Parent Subtopic</Label>
+                      <Select value={editingSubSubtopic.subtopic_id} onValueChange={(v) => setEditingSubSubtopic({ ...editingSubSubtopic, subtopic_id: v })}>
+                        <SelectTrigger><SelectValue /></SelectTrigger>
+                        <SelectContent>{subtopics.map((s) => <SelectItem key={s.id} value={s.id}>{s.title}</SelectItem>)}</SelectContent>
+                      </Select>
+                    </div>
+                    <div><Label>Title</Label><Input value={editingSubSubtopic.title} onChange={(e) => setEditingSubSubtopic({ ...editingSubSubtopic, title: e.target.value })} /></div>
+                    <div><Label>Description</Label><Input value={editingSubSubtopic.description || ""} onChange={(e) => setEditingSubSubtopic({ ...editingSubSubtopic, description: e.target.value })} /></div>
+                    <Button onClick={updateSubSubtopic}>Save Changes</Button>
+                  </div>
+                )}
+              </DialogContent>
+            </Dialog>
           </TabsContent>
 
           {/* PROGRAMS */}
@@ -280,68 +281,52 @@ export default function AdminPage() {
               <CardHeader><CardTitle className="text-lg">Add Program</CardTitle></CardHeader>
               <CardContent className="space-y-3">
                 <div>
-                  <Label>Subtopic</Label>
-                  <Select value={programForm.subtopic_id} onValueChange={(v) => setProgramForm({ ...programForm, subtopic_id: v })}>
-                    <SelectTrigger><SelectValue placeholder="Select subtopic" /></SelectTrigger>
+                  <Label>Sub-Subtopic</Label>
+                  <Select value={programForm.sub_subtopic_id} onValueChange={(v) => setProgramForm({ ...programForm, sub_subtopic_id: v })}>
+                    <SelectTrigger><SelectValue placeholder="Select sub-subtopic" /></SelectTrigger>
                     <SelectContent>
-                      {subtopics.map((s) => <SelectItem key={s.id} value={s.id}>{topics.find(t => t.id === s.topic_id)?.title} → {s.title}</SelectItem>)}
+                      {subSubtopics.map((ss) => {
+                        const parentSub = subtopics.find(s => s.id === ss.subtopic_id);
+                        const parentTopic = parentSub ? topics.find(t => t.id === parentSub.topic_id) : null;
+                        return <SelectItem key={ss.id} value={ss.id}>{parentTopic?.title} → {parentSub?.title} → {ss.title}</SelectItem>;
+                      })}
                     </SelectContent>
                   </Select>
                 </div>
                 <div><Label>Title</Label><Input value={programForm.title} onChange={(e) => setProgramForm({ ...programForm, title: e.target.value })} /></div>
                 <div><Label>Description</Label><Input value={programForm.description} onChange={(e) => setProgramForm({ ...programForm, description: e.target.value })} /></div>
-                <div>
-                  <Label>Language</Label>
-                  <Input value={programForm.language} onChange={(e) => setProgramForm({ ...programForm, language: e.target.value })} placeholder="c, python, java..." />
-                </div>
-                <div>
-                  <Label>Code</Label>
-                  <Textarea value={programForm.code} onChange={(e) => setProgramForm({ ...programForm, code: e.target.value })} rows={12} className="font-mono text-sm" />
-                </div>
+                <div><Label>Language</Label><Input value={programForm.language} onChange={(e) => setProgramForm({ ...programForm, language: e.target.value })} placeholder="c, python, java..." /></div>
+                <div><Label>Code</Label><Textarea value={programForm.code} onChange={(e) => setProgramForm({ ...programForm, code: e.target.value })} rows={12} className="font-mono text-sm" /></div>
                 <div><Label>Sort Order</Label><Input type="number" value={programForm.sort_order} onChange={(e) => setProgramForm({ ...programForm, sort_order: Number(e.target.value) })} /></div>
-                <Button onClick={addProgram} disabled={!programForm.title || !programForm.subtopic_id || !programForm.code}><Plus className="h-4 w-4 mr-1" />Add Program</Button>
+                <Button onClick={addProgram} disabled={!programForm.title || !programForm.sub_subtopic_id || !programForm.code}><Plus className="h-4 w-4 mr-1" />Add Program</Button>
               </CardContent>
             </Card>
-
             <div className="space-y-3">
               {programs.map((p) => (
-                <div key={p.id} className="flex items-center justify-between p-4 rounded-lg bg-card border border-border">
-                  <div>
-                    <h3 className="font-medium text-foreground">{p.title}</h3>
-                    <p className="text-xs text-muted-foreground">{p.language} • {subtopics.find(s => s.id === p.subtopic_id)?.title}</p>
-                  </div>
-                  <div className="flex gap-2">
-                    <Dialog>
-                      <DialogTrigger asChild>
-                        <Button variant="ghost" size="icon" onClick={() => setEditingProgram({ ...p })}>
-                          <Pencil className="h-4 w-4" />
-                        </Button>
-                      </DialogTrigger>
-                      <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
-                        <DialogHeader><DialogTitle>Edit Program</DialogTitle></DialogHeader>
-                        {editingProgram && (
-                          <div className="space-y-3">
-                            <div>
-                              <Label>Subtopic</Label>
-                              <Select value={editingProgram.subtopic_id} onValueChange={(v) => setEditingProgram({ ...editingProgram, subtopic_id: v })}>
-                                <SelectTrigger><SelectValue /></SelectTrigger>
-                                <SelectContent>{subtopics.map((s) => <SelectItem key={s.id} value={s.id}>{s.title}</SelectItem>)}</SelectContent>
-                              </Select>
-                            </div>
-                            <div><Label>Title</Label><Input value={editingProgram.title} onChange={(e) => setEditingProgram({ ...editingProgram, title: e.target.value })} /></div>
-                            <div><Label>Description</Label><Input value={editingProgram.description || ""} onChange={(e) => setEditingProgram({ ...editingProgram, description: e.target.value })} /></div>
-                            <div><Label>Language</Label><Input value={editingProgram.language} onChange={(e) => setEditingProgram({ ...editingProgram, language: e.target.value })} /></div>
-                            <div><Label>Code</Label><Textarea value={editingProgram.code} onChange={(e) => setEditingProgram({ ...editingProgram, code: e.target.value })} rows={12} className="font-mono text-sm" /></div>
-                            <Button onClick={updateProgram}>Save Changes</Button>
-                          </div>
-                        )}
-                      </DialogContent>
-                    </Dialog>
-                    <Button variant="ghost" size="icon" onClick={() => deleteProgram(p.id)} className="text-destructive"><Trash2 className="h-4 w-4" /></Button>
-                  </div>
-                </div>
+                <ItemRow key={p.id} title={p.title} subtitle={`${p.language} • ${subSubtopics.find(ss => ss.id === p.sub_subtopic_id)?.title || subtopics.find(s => s.id === p.subtopic_id)?.title}`} onEdit={() => setEditingProgram({ ...p })} onDelete={() => deleteProgram(p.id)} />
               ))}
             </div>
+            <Dialog open={!!editingProgram} onOpenChange={(o) => !o && setEditingProgram(null)}>
+              <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+                <DialogHeader><DialogTitle>Edit Program</DialogTitle></DialogHeader>
+                {editingProgram && (
+                  <div className="space-y-3">
+                    <div>
+                      <Label>Sub-Subtopic</Label>
+                      <Select value={editingProgram.sub_subtopic_id || ""} onValueChange={(v) => setEditingProgram({ ...editingProgram, sub_subtopic_id: v })}>
+                        <SelectTrigger><SelectValue /></SelectTrigger>
+                        <SelectContent>{subSubtopics.map((ss) => <SelectItem key={ss.id} value={ss.id}>{ss.title}</SelectItem>)}</SelectContent>
+                      </Select>
+                    </div>
+                    <div><Label>Title</Label><Input value={editingProgram.title} onChange={(e) => setEditingProgram({ ...editingProgram, title: e.target.value })} /></div>
+                    <div><Label>Description</Label><Input value={editingProgram.description || ""} onChange={(e) => setEditingProgram({ ...editingProgram, description: e.target.value })} /></div>
+                    <div><Label>Language</Label><Input value={editingProgram.language} onChange={(e) => setEditingProgram({ ...editingProgram, language: e.target.value })} /></div>
+                    <div><Label>Code</Label><Textarea value={editingProgram.code} onChange={(e) => setEditingProgram({ ...editingProgram, code: e.target.value })} rows={12} className="font-mono text-sm" /></div>
+                    <Button onClick={updateProgram}>Save Changes</Button>
+                  </div>
+                )}
+              </DialogContent>
+            </Dialog>
           </TabsContent>
         </Tabs>
       </main>
