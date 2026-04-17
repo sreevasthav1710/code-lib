@@ -2,16 +2,68 @@
 import { createClient } from '@supabase/supabase-js';
 import type { Database } from './types';
 
-const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
-const SUPABASE_PUBLISHABLE_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
+// Support both VITE_* and NEXT_PUBLIC_* environment variable prefixes.
+const SUPABASE_URL = (
+  import.meta.env.VITE_SUPABASE_URL ||
+  import.meta.env.VITE_PUBLIC_SUPABASE_URL ||
+  import.meta.env.NEXT_PUBLIC_SUPABASE_URL ||
+  import.meta.env.NEXT_PUBLIC_VITE_SUPABASE_URL ||
+  null
+);
+const SUPABASE_PUBLISHABLE_KEY = (
+  import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY ||
+  import.meta.env.VITE_PUBLIC_SUPABASE_KEY ||
+  import.meta.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ||
+  import.meta.env.NEXT_PUBLIC_SUPABASE_KEY ||
+  null
+);
+
+// Indicate whether configuration looks valid
+export const SUPABASE_CONFIGURED = Boolean(SUPABASE_URL && SUPABASE_PUBLISHABLE_KEY);
+
+if (!SUPABASE_CONFIGURED) {
+  // Friendly, actionable logs for missing configuration
+  // eslint-disable-next-line no-console
+  console.error(
+    '[supabase] Missing environment variables. Expected one of VITE_SUPABASE_URL or NEXT_PUBLIC_SUPABASE_URL and a publishable key.'
+  );
+}
+
+const storage = typeof window !== 'undefined' ? localStorage : undefined;
+
+// If not configured, export a safe fallback that surfaces meaningful errors
+function makeNotConfiguredClient() {
+  const err = new Error('Supabase client not configured. Check SUPABASE_URL and publishable key.');
+
+  const rejected = async () => ({ data: null, error: err });
+
+  const builder = () => ({
+    select: () => ({ then: (cb: any) => Promise.resolve({ data: null, error: err }).then(cb) }),
+    order: () => ({ then: (cb: any) => Promise.resolve({ data: null, error: err }).then(cb) }),
+    eq: () => ({ then: (cb: any) => Promise.resolve({ data: null, error: err }).then(cb) }),
+    in: () => ({ then: (cb: any) => Promise.resolve({ data: null, error: err }).then(cb) }),
+    single: () => ({ then: (cb: any) => Promise.resolve({ data: null, error: err }).then(cb) }),
+  });
+
+  return {
+    from: (_: string) => builder(),
+    insert: rejected,
+    update: rejected,
+    delete: rejected,
+    rpc: rejected,
+  } as unknown as ReturnType<typeof createClient>;
+}
+
+// Create a real client when configuration is present
+export const supabase = SUPABASE_CONFIGURED
+  ? createClient<Database>(SUPABASE_URL as string, SUPABASE_PUBLISHABLE_KEY as string, {
+      auth: {
+        storage: storage as any,
+        persistSession: true,
+        autoRefreshToken: true,
+      },
+    })
+  : makeNotConfiguredClient();
 
 // Import the supabase client like this:
-// import { supabase } from "@/integrations/supabase/client";
-
-export const supabase = createClient<Database>(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
-  auth: {
-    storage: localStorage,
-    persistSession: true,
-    autoRefreshToken: true,
-  }
-});
+// import { supabase, SUPABASE_CONFIGURED } from "@/integrations/supabase/client";

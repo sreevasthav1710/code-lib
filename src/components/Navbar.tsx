@@ -1,7 +1,7 @@
 import { Link } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
 import { Button } from "@/components/ui/button";
-import { Code2, LogIn, LogOut, Shield, UserPlus, Moon, Sun } from "lucide-react";
+import { Code2, LogIn, LogOut, Shield, UserPlus, Moon, Sun, Terminal } from "lucide-react";
 import { useEffect, useState } from "react";
 
 export function Navbar() {
@@ -51,6 +51,12 @@ export function Navbar() {
                 </Link>
               </Button>
             )}
+            <Button variant="ghost" size="sm" asChild>
+              <Link to="/playground">
+                <Terminal className="h-4 w-4 mr-1" />
+                Playground
+              </Link>
+            </Button>
             {user ? (
               <Button variant="ghost" size="sm" onClick={signOut}>
                 <LogOut className="h-4 w-4 mr-1" />

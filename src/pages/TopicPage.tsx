@@ -1,11 +1,12 @@
 import { useEffect, useState } from "react";
-import { useParams, Link } from "react-router-dom";
-import { supabase } from "@/integrations/supabase/client";
+import { useParams, Link, useNavigate } from "react-router-dom";
+import { supabase, SUPABASE_CONFIGURED } from "@/integrations/supabase/client";
 import { Navbar } from "@/components/Navbar";
 import { CodeBlock } from "@/components/CodeBlock";
-import { ChevronLeft, ChevronDown, ChevronRight, FileCode, Layers, Code } from "lucide-react";
+import { ChevronLeft, ChevronDown, ChevronRight, FileCode, Layers, Code, Play } from "lucide-react";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
 
 interface Subtopic {
   id: string;
@@ -32,6 +33,7 @@ interface Program {
 
 export default function TopicPage() {
   const { topicId } = useParams();
+  const navigate = useNavigate();
   const [topicTitle, setTopicTitle] = useState("");
   const [subtopics, setSubtopics] = useState<Subtopic[]>([]);
   const [subSubtopics, setSubSubtopics] = useState<SubSubtopic[]>([]);
@@ -39,34 +41,86 @@ export default function TopicPage() {
   const [openSubtopics, setOpenSubtopics] = useState<Set<string>>(new Set());
   const [selectedProgram, setSelectedProgram] = useState<Program | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!topicId) return;
-    Promise.all([
-      supabase.from("topics").select("title").eq("id", topicId).single(),
-      supabase.from("subtopics").select("*").eq("topic_id", topicId).order("sort_order"),
-    ]).then(async ([topicRes, subRes]) => {
-      setTopicTitle(topicRes.data?.title || "");
-      const subs = subRes.data || [];
-      setSubtopics(subs);
-      const subIds = subs.map((s) => s.id);
-      if (subIds.length > 0) {
-        const [ssRes, progRes] = await Promise.all([
-          supabase.from("sub_subtopics").select("*").in("subtopic_id", subIds).order("sort_order"),
-          supabase.from("programs").select("*").in("subtopic_id", subIds).order("sort_order"),
-        ]);
-        setSubSubtopics(ssRes.data || []);
-        setPrograms(progRes.data || []);
+    let mounted = true;
+    const fetchTopic = async () => {
+      setLoading(true);
+      setError(null);
+      if (!SUPABASE_CONFIGURED) {
+        console.error('[TopicPage] Supabase not configured');
+        setTopicTitle(''); setSubtopics([]); setSubSubtopics([]); setPrograms([]);
+        setError('Supabase not configured');
+        setLoading(false);
+        return;
       }
-      setLoading(false);
-    });
+      try {
+        const [topicRes, subRes] = await Promise.all([
+          // @ts-ignore
+          supabase.from("topics").select("*").eq("id", topicId).single(),
+          // @ts-ignore
+          supabase.from("subtopics").select("*").eq("topic_id", topicId).order("sort_order"),
+        ]);
+        // @ts-ignore
+        console.log('[TopicPage] topicRes, subRes', { topicRes, subRes });
+        // @ts-ignore
+        setTopicTitle(topicRes.data?.title || "");
+        // @ts-ignore
+        const subs = subRes.data || [];
+        if (mounted) setSubtopics(subs);
+        console.log('[TopicPage] setSubtopics count:', subs.length);
+        const subIds = subs.map((s: any) => s.id);
+        if (subIds.length > 0) {
+          // @ts-ignore
+          const [ssRes, progRes] = await Promise.all([
+            supabase.from("sub_subtopics").select("*").in("subtopic_id", subIds).order("sort_order"),
+            supabase.from("programs").select("*").in("subtopic_id", subIds).order("sort_order"),
+          ]);
+          // @ts-ignore
+          console.log('[TopicPage] sub-sub and programs', { ssRes, progRes });
+          // @ts-ignore
+          if (mounted) setSubSubtopics(ssRes.data || []);
+          // @ts-ignore
+          if (mounted) setPrograms(progRes.data || []);
+          console.log('[TopicPage] setSubSubtopics count:', (ssRes.data || []).length, 'programs count:', (progRes.data || []).length);
+        } else {
+          if (mounted) { setSubSubtopics([]); setPrograms([]); }
+        }
+      } catch (e: any) {
+        console.error('[TopicPage] fetch error', e);
+        setError(e?.message || String(e));
+        if (mounted) { setSubtopics([]); setSubSubtopics([]); setPrograms([]); setTopicTitle(''); }
+      } finally {
+        if (mounted) setLoading(false);
+      }
+    };
+
+    fetchTopic();
+    return () => { mounted = false; };
   }, [topicId]);
+
+  useEffect(() => {
+    console.log('[TopicPage] states', { topicTitle, subtopicsCount: subtopics.length, subSubtopicsCount: subSubtopics.length, programsCount: programs.length });
+  }, [topicTitle, subtopics, subSubtopics, programs]);
 
   const toggleSubtopic = (id: string) => {
     setOpenSubtopics((prev) => {
       const next = new Set(prev);
       next.has(id) ? next.delete(id) : next.add(id);
       return next;
+    });
+  };
+
+  const runInPlayground = (program: Program) => {
+    sessionStorage.setItem("codelib-playground-code", program.code);
+    sessionStorage.setItem("codelib-playground-title", program.title);
+    navigate("/playground", {
+      state: {
+        code: program.code,
+        title: program.title,
+      },
     });
   };
 
@@ -84,6 +138,10 @@ export default function TopicPage() {
         {loading ? (
           <div className="space-y-4">
             {[1, 2].map((i) => <div key={i} className="h-16 rounded-lg bg-muted animate-pulse" />)}
+          </div>
+        ) : error ? (
+          <div className="text-center py-20 text-destructive">
+            <p className="text-lg">Error loading topic: {error}</p>
           </div>
         ) : subtopics.length === 0 ? (
           <p className="text-muted-foreground text-center py-12">No subtopics yet.</p>
@@ -158,10 +216,18 @@ export default function TopicPage() {
           {selectedProgram && (
             <>
               <DialogHeader>
-                <DialogTitle>{selectedProgram.title}</DialogTitle>
-                {selectedProgram.description && (
-                  <p className="text-sm text-muted-foreground">{selectedProgram.description}</p>
-                )}
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                  <div>
+                    <DialogTitle>{selectedProgram.title}</DialogTitle>
+                    {selectedProgram.description && (
+                      <p className="mt-2 text-sm text-muted-foreground">{selectedProgram.description}</p>
+                    )}
+                  </div>
+                  <Button onClick={() => runInPlayground(selectedProgram)}>
+                    <Play className="mr-2 h-4 w-4" />
+                    Run in Playground
+                  </Button>
+                </div>
               </DialogHeader>
               <div className="mt-4">
                 <CodeBlock code={selectedProgram.code} language={selectedProgram.language} title={selectedProgram.title} />
