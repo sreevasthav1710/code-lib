@@ -16,10 +16,16 @@ export default function Index() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    supabase.from("topics").select("*").order("sort_order").then(({ data }) => {
+    let cancelled = false;
+    const load = async () => {
+      const { data, error } = await supabase.from("topics").select("*").order("sort_order");
+      if (cancelled) return;
+      if (error) console.error("Failed to load topics:", error);
       setTopics(data || []);
       setLoading(false);
-    });
+    };
+    load();
+    return () => { cancelled = true; };
   }, []);
 
   return (
