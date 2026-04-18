@@ -52,8 +52,8 @@ export default function LoginPage() {
               </Button>
             </form>
             <p className="text-center text-sm text-muted-foreground mt-4">
-              Don't have an account?{" "}
-              <Link to="/signup" className="text-primary hover:underline">Sign up</Link>
+              Don't have an account? No need to Sign in{" "}
+              {/* <Link to="/signup" className="text-primary hover:underline">Sign up</Link> */}
             </p>
           </CardContent>
         </Card>

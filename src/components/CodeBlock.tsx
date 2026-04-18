@@ -20,22 +20,25 @@ export function CodeBlock({ code, language, title }: CodeBlockProps) {
   };
 
   return (
-    <div className="rounded-lg overflow-hidden border border-border">
-      <div className="flex items-center justify-between px-4 py-2 bg-code-header">
-        <span className="text-sm font-mono text-muted-foreground">{title || language}</span>
+    <div className="overflow-hidden rounded-md border border-border">
+      <div className="flex items-center justify-between gap-3 bg-code-header px-3 py-2 sm:px-4">
+        <span className="min-w-0 truncate font-mono text-sm text-muted-foreground">{title || language}</span>
         <Button variant="ghost" size="sm" onClick={handleCopy} className="h-7 text-muted-foreground hover:text-foreground">
           {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
-          <span className="ml-1 text-xs">{copied ? "Copied" : "Copy"}</span>
+          <span className="hidden text-xs sm:inline">{copied ? "Copied" : "Copy"}</span>
         </Button>
       </div>
-      <SyntaxHighlighter
-        language={language}
-        style={vscDarkPlus}
-        showLineNumbers
-        customStyle={{ margin: 0, borderRadius: 0, fontSize: "0.875rem" }}
-      >
-        {code}
-      </SyntaxHighlighter>
+      <div className="max-w-full overflow-x-auto">
+        <SyntaxHighlighter
+          language={language}
+          style={vscDarkPlus}
+          showLineNumbers
+          wrapLongLines={false}
+          customStyle={{ margin: 0, borderRadius: 0, fontSize: "0.8125rem", minWidth: "max-content" }}
+        >
+          {code}
+        </SyntaxHighlighter>
+      </div>
     </div>
   );
 }

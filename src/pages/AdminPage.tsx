@@ -128,14 +128,14 @@ export default function AdminPage() {
   if (!isAdmin) return null;
 
   const ItemRow = ({ title, subtitle, onEdit, onDelete }: { title: string; subtitle?: string; onEdit: () => void; onDelete: () => void }) => (
-    <div className="flex items-center justify-between p-4 rounded-lg bg-card border border-border">
-      <div>
-        <h3 className="font-medium text-foreground">{title}</h3>
-        {subtitle && <p className="text-xs text-muted-foreground">{subtitle}</p>}
+    <div className="flex flex-col gap-3 rounded-md border border-border bg-card p-4 sm:flex-row sm:items-center sm:justify-between">
+      <div className="min-w-0">
+        <h3 className="break-words font-medium text-foreground">{title}</h3>
+        {subtitle && <p className="mt-1 break-words text-xs leading-5 text-muted-foreground">{subtitle}</p>}
       </div>
-      <div className="flex gap-2">
-        <Button variant="ghost" size="icon" onClick={onEdit}><Pencil className="h-4 w-4" /></Button>
-        <Button variant="ghost" size="icon" onClick={onDelete} className="text-destructive"><Trash2 className="h-4 w-4" /></Button>
+      <div className="flex shrink-0 justify-end gap-2">
+        <Button variant="ghost" size="icon" onClick={onEdit} aria-label={`Edit ${title}`} title="Edit"><Pencil className="h-4 w-4" /></Button>
+        <Button variant="ghost" size="icon" onClick={onDelete} className="text-destructive" aria-label={`Delete ${title}`} title="Delete"><Trash2 className="h-4 w-4" /></Button>
       </div>
     </div>
   );
@@ -143,14 +143,14 @@ export default function AdminPage() {
   return (
     <div className="min-h-screen bg-background">
       <Navbar />
-      <main className="max-w-6xl mx-auto px-4 py-8">
-        <h1 className="text-3xl font-bold text-foreground mb-6">Admin Panel</h1>
+      <main className="max-w-6xl mx-auto px-4 py-6 sm:px-6 sm:py-8">
+        <h1 className="mb-5 text-2xl font-bold leading-tight text-foreground sm:mb-6 sm:text-3xl">Admin Panel</h1>
 
         <Tabs defaultValue="topics">
-          <TabsList className="mb-6">
+          <TabsList className="mb-6 grid h-auto w-full grid-cols-2 gap-1 sm:inline-grid sm:w-auto sm:grid-cols-4">
             <TabsTrigger value="topics">Topics</TabsTrigger>
             <TabsTrigger value="subtopics">Subtopics</TabsTrigger>
-            <TabsTrigger value="subsubtopics">Sub-Subtopics</TabsTrigger>
+            <TabsTrigger value="subsubtopics">Sub-Subs</TabsTrigger>
             <TabsTrigger value="programs">Programs</TabsTrigger>
           </TabsList>
 
@@ -162,7 +162,7 @@ export default function AdminPage() {
                 <div><Label>Title</Label><Input value={topicForm.title} onChange={(e) => setTopicForm({ ...topicForm, title: e.target.value })} /></div>
                 <div><Label>Description</Label><Input value={topicForm.description} onChange={(e) => setTopicForm({ ...topicForm, description: e.target.value })} /></div>
                 <div><Label>Sort Order</Label><Input type="number" value={topicForm.sort_order} onChange={(e) => setTopicForm({ ...topicForm, sort_order: Number(e.target.value) })} /></div>
-                <Button onClick={addTopic} disabled={!topicForm.title}><Plus className="h-4 w-4 mr-1" />Add Topic</Button>
+                <Button onClick={addTopic} disabled={!topicForm.title} className="w-full sm:w-auto"><Plus className="h-4 w-4 mr-1" />Add Topic</Button>
               </CardContent>
             </Card>
             <div className="space-y-3">
@@ -173,14 +173,14 @@ export default function AdminPage() {
               ))}
             </div>
             <Dialog open={!!editingTopic} onOpenChange={(o) => !o && setEditingTopic(null)}>
-              <DialogContent>
+              <DialogContent className="max-h-[90vh] w-[calc(100vw-1rem)] overflow-y-auto rounded-md sm:w-full">
                 <DialogHeader><DialogTitle>Edit Topic</DialogTitle></DialogHeader>
                 {editingTopic && (
                   <div className="space-y-3">
                     <div><Label>Title</Label><Input value={editingTopic.title} onChange={(e) => setEditingTopic({ ...editingTopic, title: e.target.value })} /></div>
                     <div><Label>Description</Label><Input value={editingTopic.description || ""} onChange={(e) => setEditingTopic({ ...editingTopic, description: e.target.value })} /></div>
                     <div><Label>Sort Order</Label><Input type="number" value={editingTopic.sort_order || 0} onChange={(e) => setEditingTopic({ ...editingTopic, sort_order: Number(e.target.value) })} /></div>
-                    <Button onClick={updateTopic}>Save Changes</Button>
+                    <Button onClick={updateTopic} className="w-full sm:w-auto">Save Changes</Button>
                   </div>
                 )}
               </DialogContent>
@@ -202,7 +202,7 @@ export default function AdminPage() {
                 <div><Label>Title</Label><Input value={subtopicForm.title} onChange={(e) => setSubtopicForm({ ...subtopicForm, title: e.target.value })} /></div>
                 <div><Label>Description</Label><Input value={subtopicForm.description} onChange={(e) => setSubtopicForm({ ...subtopicForm, description: e.target.value })} /></div>
                 <div><Label>Sort Order</Label><Input type="number" value={subtopicForm.sort_order} onChange={(e) => setSubtopicForm({ ...subtopicForm, sort_order: Number(e.target.value) })} /></div>
-                <Button onClick={addSubtopic} disabled={!subtopicForm.title || !subtopicForm.topic_id}><Plus className="h-4 w-4 mr-1" />Add Subtopic</Button>
+                <Button onClick={addSubtopic} disabled={!subtopicForm.title || !subtopicForm.topic_id} className="w-full sm:w-auto"><Plus className="h-4 w-4 mr-1" />Add Subtopic</Button>
               </CardContent>
             </Card>
             <div className="space-y-3">
@@ -211,7 +211,7 @@ export default function AdminPage() {
               ))}
             </div>
             <Dialog open={!!editingSubtopic} onOpenChange={(o) => !o && setEditingSubtopic(null)}>
-              <DialogContent>
+              <DialogContent className="max-h-[90vh] w-[calc(100vw-1rem)] overflow-y-auto rounded-md sm:w-full">
                 <DialogHeader><DialogTitle>Edit Subtopic</DialogTitle></DialogHeader>
                 {editingSubtopic && (
                   <div className="space-y-3">
@@ -224,7 +224,7 @@ export default function AdminPage() {
                     </div>
                     <div><Label>Title</Label><Input value={editingSubtopic.title} onChange={(e) => setEditingSubtopic({ ...editingSubtopic, title: e.target.value })} /></div>
                     <div><Label>Description</Label><Input value={editingSubtopic.description || ""} onChange={(e) => setEditingSubtopic({ ...editingSubtopic, description: e.target.value })} /></div>
-                    <Button onClick={updateSubtopic}>Save Changes</Button>
+                    <Button onClick={updateSubtopic} className="w-full sm:w-auto">Save Changes</Button>
                   </div>
                 )}
               </DialogContent>
@@ -240,13 +240,13 @@ export default function AdminPage() {
                   <Label>Parent Subtopic</Label>
                   <Select value={subSubtopicForm.subtopic_id} onValueChange={(v) => setSubSubtopicForm({ ...subSubtopicForm, subtopic_id: v })}>
                     <SelectTrigger><SelectValue placeholder="Select subtopic" /></SelectTrigger>
-                    <SelectContent>{subtopics.map((s) => <SelectItem key={s.id} value={s.id}>{topics.find(t => t.id === s.topic_id)?.title} → {s.title}</SelectItem>)}</SelectContent>
+                    <SelectContent>{subtopics.map((s) => <SelectItem key={s.id} value={s.id}>{topics.find(t => t.id === s.topic_id)?.title} &gt; {s.title}</SelectItem>)}</SelectContent>
                   </Select>
                 </div>
                 <div><Label>Title</Label><Input value={subSubtopicForm.title} onChange={(e) => setSubSubtopicForm({ ...subSubtopicForm, title: e.target.value })} /></div>
                 <div><Label>Description</Label><Input value={subSubtopicForm.description} onChange={(e) => setSubSubtopicForm({ ...subSubtopicForm, description: e.target.value })} /></div>
                 <div><Label>Sort Order</Label><Input type="number" value={subSubtopicForm.sort_order} onChange={(e) => setSubSubtopicForm({ ...subSubtopicForm, sort_order: Number(e.target.value) })} /></div>
-                <Button onClick={addSubSubtopic} disabled={!subSubtopicForm.title || !subSubtopicForm.subtopic_id}><Plus className="h-4 w-4 mr-1" />Add Sub-Subtopic</Button>
+                <Button onClick={addSubSubtopic} disabled={!subSubtopicForm.title || !subSubtopicForm.subtopic_id} className="w-full sm:w-auto"><Plus className="h-4 w-4 mr-1" />Add Sub-Subtopic</Button>
               </CardContent>
             </Card>
             <div className="space-y-3">
@@ -255,7 +255,7 @@ export default function AdminPage() {
               ))}
             </div>
             <Dialog open={!!editingSubSubtopic} onOpenChange={(o) => !o && setEditingSubSubtopic(null)}>
-              <DialogContent>
+              <DialogContent className="max-h-[90vh] w-[calc(100vw-1rem)] overflow-y-auto rounded-md sm:w-full">
                 <DialogHeader><DialogTitle>Edit Sub-Subtopic</DialogTitle></DialogHeader>
                 {editingSubSubtopic && (
                   <div className="space-y-3">
@@ -268,7 +268,7 @@ export default function AdminPage() {
                     </div>
                     <div><Label>Title</Label><Input value={editingSubSubtopic.title} onChange={(e) => setEditingSubSubtopic({ ...editingSubSubtopic, title: e.target.value })} /></div>
                     <div><Label>Description</Label><Input value={editingSubSubtopic.description || ""} onChange={(e) => setEditingSubSubtopic({ ...editingSubSubtopic, description: e.target.value })} /></div>
-                    <Button onClick={updateSubSubtopic}>Save Changes</Button>
+                    <Button onClick={updateSubSubtopic} className="w-full sm:w-auto">Save Changes</Button>
                   </div>
                 )}
               </DialogContent>
@@ -288,7 +288,7 @@ export default function AdminPage() {
                       {subSubtopics.map((ss) => {
                         const parentSub = subtopics.find(s => s.id === ss.subtopic_id);
                         const parentTopic = parentSub ? topics.find(t => t.id === parentSub.topic_id) : null;
-                        return <SelectItem key={ss.id} value={ss.id}>{parentTopic?.title} → {parentSub?.title} → {ss.title}</SelectItem>;
+                        return <SelectItem key={ss.id} value={ss.id}>{parentTopic?.title} &gt; {parentSub?.title} &gt; {ss.title}</SelectItem>;
                       })}
                     </SelectContent>
                   </Select>
@@ -298,16 +298,16 @@ export default function AdminPage() {
                 <div><Label>Language</Label><Input value={programForm.language} onChange={(e) => setProgramForm({ ...programForm, language: e.target.value })} placeholder="c, python, java..." /></div>
                 <div><Label>Code</Label><Textarea value={programForm.code} onChange={(e) => setProgramForm({ ...programForm, code: e.target.value })} rows={12} className="font-mono text-sm" /></div>
                 <div><Label>Sort Order</Label><Input type="number" value={programForm.sort_order} onChange={(e) => setProgramForm({ ...programForm, sort_order: Number(e.target.value) })} /></div>
-                <Button onClick={addProgram} disabled={!programForm.title || !programForm.sub_subtopic_id || !programForm.code}><Plus className="h-4 w-4 mr-1" />Add Program</Button>
+                <Button onClick={addProgram} disabled={!programForm.title || !programForm.sub_subtopic_id || !programForm.code} className="w-full sm:w-auto"><Plus className="h-4 w-4 mr-1" />Add Program</Button>
               </CardContent>
             </Card>
             <div className="space-y-3">
               {programs.map((p) => (
-                <ItemRow key={p.id} title={p.title} subtitle={`${p.language} • ${subSubtopics.find(ss => ss.id === p.sub_subtopic_id)?.title || subtopics.find(s => s.id === p.subtopic_id)?.title}`} onEdit={() => setEditingProgram({ ...p })} onDelete={() => deleteProgram(p.id)} />
+                <ItemRow key={p.id} title={p.title} subtitle={`${p.language} - ${subSubtopics.find(ss => ss.id === p.sub_subtopic_id)?.title || subtopics.find(s => s.id === p.subtopic_id)?.title}`} onEdit={() => setEditingProgram({ ...p })} onDelete={() => deleteProgram(p.id)} />
               ))}
             </div>
             <Dialog open={!!editingProgram} onOpenChange={(o) => !o && setEditingProgram(null)}>
-              <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+              <DialogContent className="max-h-[90vh] w-[calc(100vw-1rem)] max-w-2xl overflow-y-auto rounded-md sm:w-full">
                 <DialogHeader><DialogTitle>Edit Program</DialogTitle></DialogHeader>
                 {editingProgram && (
                   <div className="space-y-3">
@@ -322,7 +322,7 @@ export default function AdminPage() {
                     <div><Label>Description</Label><Input value={editingProgram.description || ""} onChange={(e) => setEditingProgram({ ...editingProgram, description: e.target.value })} /></div>
                     <div><Label>Language</Label><Input value={editingProgram.language} onChange={(e) => setEditingProgram({ ...editingProgram, language: e.target.value })} /></div>
                     <div><Label>Code</Label><Textarea value={editingProgram.code} onChange={(e) => setEditingProgram({ ...editingProgram, code: e.target.value })} rows={12} className="font-mono text-sm" /></div>
-                    <Button onClick={updateProgram}>Save Changes</Button>
+                    <Button onClick={updateProgram} className="w-full sm:w-auto">Save Changes</Button>
                   </div>
                 )}
               </DialogContent>

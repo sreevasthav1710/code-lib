@@ -58,39 +58,30 @@ export default function TopicPage() {
       }
       try {
         const [topicRes, subRes] = await Promise.all([
-          // @ts-ignore
           supabase.from("topics").select("*").eq("id", topicId).single(),
-          // @ts-ignore
           supabase.from("subtopics").select("*").eq("topic_id", topicId).order("sort_order"),
         ]);
-        // @ts-ignore
         console.log('[TopicPage] topicRes, subRes', { topicRes, subRes });
-        // @ts-ignore
         setTopicTitle(topicRes.data?.title || "");
-        // @ts-ignore
         const subs = subRes.data || [];
         if (mounted) setSubtopics(subs);
         console.log('[TopicPage] setSubtopics count:', subs.length);
-        const subIds = subs.map((s: any) => s.id);
+        const subIds = subs.map((s) => s.id);
         if (subIds.length > 0) {
-          // @ts-ignore
           const [ssRes, progRes] = await Promise.all([
             supabase.from("sub_subtopics").select("*").in("subtopic_id", subIds).order("sort_order"),
             supabase.from("programs").select("*").in("subtopic_id", subIds).order("sort_order"),
           ]);
-          // @ts-ignore
           console.log('[TopicPage] sub-sub and programs', { ssRes, progRes });
-          // @ts-ignore
           if (mounted) setSubSubtopics(ssRes.data || []);
-          // @ts-ignore
           if (mounted) setPrograms(progRes.data || []);
           console.log('[TopicPage] setSubSubtopics count:', (ssRes.data || []).length, 'programs count:', (progRes.data || []).length);
         } else {
           if (mounted) { setSubSubtopics([]); setPrograms([]); }
         }
-      } catch (e: any) {
+      } catch (e: unknown) {
         console.error('[TopicPage] fetch error', e);
-        setError(e?.message || String(e));
+        setError(e instanceof Error ? e.message : String(e));
         if (mounted) { setSubtopics([]); setSubSubtopics([]); setPrograms([]); setTopicTitle(''); }
       } finally {
         if (mounted) setLoading(false);
@@ -108,7 +99,11 @@ export default function TopicPage() {
   const toggleSubtopic = (id: string) => {
     setOpenSubtopics((prev) => {
       const next = new Set(prev);
-      next.has(id) ? next.delete(id) : next.add(id);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
       return next;
     });
   };
@@ -127,17 +122,17 @@ export default function TopicPage() {
   return (
     <div className="min-h-screen bg-background">
       <Navbar />
-      <main className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <main className="max-w-5xl mx-auto px-4 py-6 sm:px-6 sm:py-8 lg:px-8">
         <Link to="/" className="inline-flex items-center text-sm text-muted-foreground hover:text-primary mb-6 transition-colors">
           <ChevronLeft className="h-4 w-4 mr-1" />
           Back to Topics
         </Link>
 
-        <h1 className="text-3xl font-bold text-foreground mb-8">{topicTitle}</h1>
+        <h1 className="mb-6 break-words text-2xl font-bold leading-tight text-foreground sm:mb-8 sm:text-3xl">{topicTitle}</h1>
 
         {loading ? (
           <div className="space-y-4">
-            {[1, 2].map((i) => <div key={i} className="h-16 rounded-lg bg-muted animate-pulse" />)}
+            {[1, 2].map((i) => <div key={i} className="h-20 animate-pulse rounded-md bg-muted sm:h-16" />)}
           </div>
         ) : error ? (
           <div className="text-center py-20 text-destructive">
@@ -152,15 +147,15 @@ export default function TopicPage() {
               return (
                 <Collapsible key={sub.id} open={openSubtopics.has(sub.id)} onOpenChange={() => toggleSubtopic(sub.id)}>
                   <CollapsibleTrigger className="w-full">
-                    <div className="flex items-center justify-between p-4 rounded-lg bg-card border border-border hover:border-primary/40 transition-colors">
-                      <div className="flex items-center gap-3">
-                        <FileCode className="h-5 w-5 text-primary" />
-                        <div className="text-left">
-                          <h2 className="font-semibold text-foreground">{sub.title}</h2>
-                          {sub.description && <p className="text-sm text-muted-foreground">{sub.description}</p>}
+                    <div className="flex flex-col gap-3 rounded-md border border-border bg-card p-4 text-left transition-colors hover:border-primary/40 sm:flex-row sm:items-center sm:justify-between">
+                      <div className="flex min-w-0 items-start gap-3 sm:items-center">
+                        <FileCode className="mt-0.5 h-5 w-5 shrink-0 text-primary sm:mt-0" />
+                        <div className="min-w-0">
+                          <h2 className="break-words font-semibold text-foreground">{sub.title}</h2>
+                          {sub.description && <p className="mt-1 break-words text-sm leading-6 text-muted-foreground">{sub.description}</p>}
                         </div>
                       </div>
-                      <div className="flex items-center gap-2">
+                      <div className="flex shrink-0 items-center justify-between gap-2 sm:justify-end">
                         <span className="text-xs text-muted-foreground bg-muted px-2 py-1 rounded-full">
                           {childSubSubtopics.length} sub-topic{childSubSubtopics.length !== 1 ? "s" : ""}
                         </span>
@@ -169,7 +164,7 @@ export default function TopicPage() {
                     </div>
                   </CollapsibleTrigger>
                   <CollapsibleContent>
-                    <div className="mt-3 space-y-2 pl-4 border-l-2 border-primary/20 ml-6">
+                    <div className="ml-3 mt-3 space-y-2 border-l-2 border-primary/20 pl-3 sm:ml-6 sm:pl-4">
                       {childSubSubtopics.length === 0 ? (
                         <p className="text-muted-foreground text-sm py-4">No sub-subtopics yet.</p>
                       ) : (
@@ -177,22 +172,22 @@ export default function TopicPage() {
                           const ssPrograms = programs.filter((p) => p.sub_subtopic_id === ss.id);
                           return (
                             <div key={ss.id} className="space-y-1">
-                              <div className="flex items-center gap-2 py-2 px-3">
-                                <Layers className="h-4 w-4 text-accent" />
-                                <h3 className="font-medium text-foreground text-sm">{ss.title}</h3>
-                                {ss.description && <span className="text-xs text-muted-foreground">— {ss.description}</span>}
+                              <div className="flex flex-wrap items-center gap-2 px-3 py-2">
+                                <Layers className="h-4 w-4 shrink-0 text-accent" />
+                                <h3 className="text-sm font-medium text-foreground">{ss.title}</h3>
+                                {ss.description && <span className="text-xs leading-5 text-muted-foreground">- {ss.description}</span>}
                               </div>
-                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pl-6">
+                              <div className="grid grid-cols-1 gap-2 pl-0 sm:grid-cols-2 sm:pl-6">
                                 {ssPrograms.map((prog) => (
                                   <button
                                     key={prog.id}
                                     onClick={() => setSelectedProgram(prog)}
-                                    className="flex items-center gap-2 p-3 rounded-lg bg-muted/50 border border-border hover:border-primary/50 hover:bg-muted transition-all text-left group"
+                                    className="group flex min-w-0 items-start gap-2 rounded-md border border-border bg-muted/50 p-3 text-left transition-all hover:border-primary/50 hover:bg-muted sm:items-center"
                                   >
-                                    <Code className="h-4 w-4 text-primary group-hover:scale-110 transition-transform" />
-                                    <div>
-                                      <p className="text-sm font-medium text-foreground group-hover:text-primary transition-colors">{prog.title}</p>
-                                      {prog.description && <p className="text-xs text-muted-foreground line-clamp-1">{prog.description}</p>}
+                                    <Code className="mt-0.5 h-4 w-4 shrink-0 text-primary transition-transform group-hover:scale-110 sm:mt-0" />
+                                    <div className="min-w-0">
+                                      <p className="break-words text-sm font-medium text-foreground transition-colors group-hover:text-primary">{prog.title}</p>
+                                      {prog.description && <p className="line-clamp-2 text-xs leading-5 text-muted-foreground">{prog.description}</p>}
                                     </div>
                                   </button>
                                 ))}
@@ -212,18 +207,18 @@ export default function TopicPage() {
 
       {/* Code Modal */}
       <Dialog open={!!selectedProgram} onOpenChange={() => setSelectedProgram(null)}>
-        <DialogContent className="max-w-3xl max-h-[85vh] overflow-y-auto">
+        <DialogContent className="max-h-[90vh] w-[calc(100vw-1rem)] max-w-3xl overflow-y-auto rounded-md sm:w-full">
           {selectedProgram && (
             <>
               <DialogHeader>
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                  <div>
+                  <div className="min-w-0">
                     <DialogTitle>{selectedProgram.title}</DialogTitle>
                     {selectedProgram.description && (
                       <p className="mt-2 text-sm text-muted-foreground">{selectedProgram.description}</p>
                     )}
                   </div>
-                  <Button onClick={() => runInPlayground(selectedProgram)}>
+                  <Button onClick={() => runInPlayground(selectedProgram)} className="w-full sm:w-auto">
                     <Play className="mr-2 h-4 w-4" />
                     Run in Playground
                   </Button>

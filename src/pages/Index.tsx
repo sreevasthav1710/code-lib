@@ -52,10 +52,10 @@ export default function Index() {
         } else {
           setTopics(data || []);
         }
-      } catch (e: any) {
+      } catch (e: unknown) {
         if (cancelled) return;
         console.error("[Index] fetch error", e);
-        setError(e?.message || String(e));
+        setError(e instanceof Error ? e.message : String(e));
         setTopics([]);
       } finally {
         if (timeoutId) clearTimeout(timeoutId);
@@ -74,25 +74,25 @@ export default function Index() {
   return (
     <div className="min-h-screen bg-background">
       <Navbar />
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
-        <div className="text-center mb-12">
-          <h1 className="text-4xl font-bold text-foreground mb-3">
+      <main className="max-w-7xl mx-auto px-4 py-8 sm:px-6 sm:py-12 lg:px-8">
+        <div className="mx-auto mb-10 max-w-3xl text-center sm:mb-12">
+          <h1 className="mb-3 text-4xl font-bold leading-tight text-foreground sm:text-5xl">
             Code <span className="text-primary">Lib</span>
           </h1>
-          <p className="text-muted-foreground text-lg max-w-2xl mx-auto">
+          <p className="mx-auto max-w-2xl text-base leading-7 text-muted-foreground sm:text-lg">
             Browse organized programming topics, subtopics, and ready-to-run code examples.
           </p>
         </div>
 
         {loading ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 lg:gap-6">
             {[1, 2, 3].map((i) => (
-              <div key={i} className="h-32 rounded-lg bg-muted animate-pulse" />
+              <div key={i} className="h-32 animate-pulse rounded-md bg-muted" />
             ))}
           </div>
         ) : error ? (
-          <div className="text-center py-20 text-destructive">
-            <p className="text-lg">Error loading topics: {error}</p>
+          <div className="mx-auto max-w-xl rounded-md border border-destructive/30 bg-destructive/5 px-5 py-8 text-center text-destructive">
+            <p className="text-base leading-7 sm:text-lg">Error loading topics: {error}</p>
           </div>
         ) : topics.length === 0 ? (
           <div className="text-center py-20 text-muted-foreground">
@@ -100,19 +100,21 @@ export default function Index() {
             <p className="text-lg">No topics available.</p>
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 lg:gap-6">
             {topics.map((topic) => (
-              <Link key={topic.id} to={`/topic/${topic.id}`}>
-                <Card className="group hover:shadow-lg hover:border-primary/40 transition-all duration-200 cursor-pointer h-full">
-                  <CardHeader>
-                    <div className="flex items-center justify-between">
-                      <CardTitle className="text-lg group-hover:text-primary transition-colors">
+              <Link key={topic.id} to={`/topic/${topic.id}`} className="block h-full">
+                <Card className="group h-full cursor-pointer rounded-md transition-all duration-200 hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-lg">
+                  <CardHeader className="p-5">
+                    <div className="flex items-start justify-between gap-4">
+                      <CardTitle className="text-lg leading-6 transition-colors group-hover:text-primary">
                         {topic?.title}
                       </CardTitle>
-                      <ChevronRight className="h-5 w-5 text-muted-foreground group-hover:text-primary transition-colors" />
+                      <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary transition-colors group-hover:bg-primary group-hover:text-primary-foreground">
+                        <ChevronRight className="h-5 w-5" />
+                      </span>
                     </div>
                     {topic?.description && (
-                      <CardDescription>{topic?.description}</CardDescription>
+                      <CardDescription className="mt-3 leading-6">{topic?.description}</CardDescription>
                     )}
                   </CardHeader>
                 </Card>

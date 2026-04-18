@@ -1,4 +1,4 @@
-import { useState, useEffect, createContext, useContext, ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState, createContext, useContext, ReactNode } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import type { User, Session } from "@supabase/supabase-js";
 
@@ -23,50 +23,85 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [isAdmin, setIsAdmin] = useState(false);
   const [loading, setLoading] = useState(true);
+  const authRequestId = useRef(0);
+
+  const applySession = useCallback((nextSession: Session | null, deferRoleCheck = false) => {
+    const requestId = ++authRequestId.current;
+    const nextUser = nextSession?.user ?? null;
+
+    setSession(nextSession);
+    setUser(nextUser);
+
+    if (!nextUser) {
+      setIsAdmin(false);
+      setLoading(false);
+      return;
+    }
+
+    setLoading(true);
+
+    const loadAdminRole = async () => {
+      try {
+        const { data, error } = await supabase
+          .from("user_roles")
+          .select("role")
+          .eq("user_id", nextUser.id)
+          .eq("role", "admin")
+          .maybeSingle();
+
+        if (authRequestId.current !== requestId) return;
+        setIsAdmin(!error && !!data);
+      } catch (error) {
+        if (authRequestId.current !== requestId) return;
+        console.error("[auth] Failed to load admin role:", error);
+        setIsAdmin(false);
+      } finally {
+        if (authRequestId.current === requestId) {
+          setLoading(false);
+        }
+      }
+    };
+
+    if (deferRoleCheck) {
+      setTimeout(loadAdminRole, 0);
+    } else {
+      void loadAdminRole();
+    }
+  }, []);
 
   useEffect(() => {
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (_event, session) => {
-        setSession(session);
-        setUser(session?.user ?? null);
-        if (session?.user) {
-          const { data } = await supabase
-            .from("user_roles")
-            .select("role")
-            .eq("user_id", session.user.id)
-            .eq("role", "admin")
-            .maybeSingle();
-          setIsAdmin(!!data);
-        } else {
-          setIsAdmin(false);
-        }
-        setLoading(false);
+      (_event, session) => {
+        applySession(session, true);
       }
     );
 
     supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
-      setUser(session?.user ?? null);
-      if (session?.user) {
-        supabase
-          .from("user_roles")
-          .select("role")
-          .eq("user_id", session.user.id)
-          .eq("role", "admin")
-          .maybeSingle()
-          .then(({ data }) => setIsAdmin(!!data));
-      }
-      setLoading(false);
+      applySession(session);
+    }).catch((error) => {
+      console.error("[auth] Failed to read session:", error);
+      applySession(null);
     });
 
-    return () => subscription.unsubscribe();
-  }, []);
+    return () => {
+      authRequestId.current += 1;
+      subscription.unsubscribe();
+    };
+  }, [applySession]);
 
   const signOut = async () => {
-    await supabase.auth.signOut();
+    authRequestId.current += 1;
     setUser(null);
     setSession(null);
     setIsAdmin(false);
+    setLoading(false);
+
+    try {
+      const { error } = await supabase.auth.signOut({ scope: "local" });
+      if (error) throw error;
+    } catch (error) {
+      console.error("[auth] Sign out failed after local state was cleared:", error);
+    }
   };
 
   return (

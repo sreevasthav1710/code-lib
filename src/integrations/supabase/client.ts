@@ -23,7 +23,6 @@ export const SUPABASE_CONFIGURED = Boolean(SUPABASE_URL && SUPABASE_PUBLISHABLE_
 
 if (!SUPABASE_CONFIGURED) {
   // Friendly, actionable logs for missing configuration
-  // eslint-disable-next-line no-console
   console.error(
     '[supabase] Missing environment variables. Expected one of VITE_SUPABASE_URL or NEXT_PUBLIC_SUPABASE_URL and a publishable key.'
   );
@@ -34,18 +33,46 @@ const storage = typeof window !== 'undefined' ? localStorage : undefined;
 // If not configured, export a safe fallback that surfaces meaningful errors
 function makeNotConfiguredClient() {
   const err = new Error('Supabase client not configured. Check SUPABASE_URL and publishable key.');
+  type FallbackResult = { data: null; error: Error };
+  type FallbackQuery = PromiseLike<FallbackResult> & {
+    select: () => FallbackQuery;
+    order: () => FallbackQuery;
+    eq: () => FallbackQuery;
+    in: () => FallbackQuery;
+    single: () => FallbackQuery;
+    maybeSingle: () => FallbackQuery;
+  };
 
-  const rejected = async () => ({ data: null, error: err });
+  const rejected = async (): Promise<FallbackResult> => ({ data: null, error: err });
 
-  const builder = () => ({
-    select: () => ({ then: (cb: any) => Promise.resolve({ data: null, error: err }).then(cb) }),
-    order: () => ({ then: (cb: any) => Promise.resolve({ data: null, error: err }).then(cb) }),
-    eq: () => ({ then: (cb: any) => Promise.resolve({ data: null, error: err }).then(cb) }),
-    in: () => ({ then: (cb: any) => Promise.resolve({ data: null, error: err }).then(cb) }),
-    single: () => ({ then: (cb: any) => Promise.resolve({ data: null, error: err }).then(cb) }),
-  });
+  const builder = (): FallbackQuery => {
+    const query = {
+      select: () => query,
+      order: () => query,
+      eq: () => query,
+      in: () => query,
+      single: () => query,
+      maybeSingle: () => query,
+      then: (onfulfilled, onrejected) => rejected().then(onfulfilled, onrejected),
+    } satisfies FallbackQuery;
+
+    return query;
+  };
 
   return {
+    auth: {
+      getSession: async () => ({ data: { session: null }, error: err }),
+      onAuthStateChange: () => ({
+        data: {
+          subscription: {
+            unsubscribe: () => undefined,
+          },
+        },
+      }),
+      signInWithPassword: rejected,
+      signUp: rejected,
+      signOut: rejected,
+    },
     from: (_: string) => builder(),
     insert: rejected,
     update: rejected,
@@ -58,7 +85,7 @@ function makeNotConfiguredClient() {
 export const supabase = SUPABASE_CONFIGURED
   ? createClient<Database>(SUPABASE_URL as string, SUPABASE_PUBLISHABLE_KEY as string, {
       auth: {
-        storage: storage as any,
+        storage,
         persistSession: true,
         autoRefreshToken: true,
       },

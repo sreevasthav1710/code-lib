@@ -131,9 +131,9 @@ export default function CPlayground() {
       setRaw(result);
       setStatus(result.run?.code === 0 ? "Accepted" : "Finished");
       setOutput(formatResult(result));
-    } catch (error: any) {
+    } catch (error: unknown) {
       setStatus("Run failed");
-      setOutput(error?.message || String(error));
+      setOutput(error instanceof Error ? error.message : String(error));
     } finally {
       setLoading(false);
     }
@@ -156,7 +156,7 @@ export default function CPlayground() {
     return (
       <div className="min-h-screen bg-background">
         <Navbar />
-        <main className="mx-auto flex min-h-[calc(100vh-4rem)] max-w-4xl items-center justify-center px-4">
+        <main className="mx-auto flex min-h-[calc(100vh-4rem)] max-w-4xl items-center justify-center px-4 py-8">
           <div className="flex items-center gap-3 text-muted-foreground">
             <Loader2 className="h-5 w-5 animate-spin" />
             <span>Loading playground...</span>
@@ -170,12 +170,12 @@ export default function CPlayground() {
     return (
       <div className="min-h-screen bg-background">
         <Navbar />
-        <main className="mx-auto flex min-h-[calc(100vh-4rem)] max-w-4xl items-center justify-center px-4 py-12">
-          <section className="w-full rounded-md border border-border bg-card p-8 text-center shadow-sm">
+        <main className="mx-auto flex min-h-[calc(100vh-4rem)] max-w-4xl items-center justify-center px-4 py-8 sm:py-12">
+          <section className="w-full rounded-md border border-border bg-card p-6 text-center shadow-sm sm:p-8">
             <div className="mx-auto mb-5 flex h-14 w-14 items-center justify-center rounded-md border border-primary/30 bg-primary/10">
               <Clock className="h-7 w-7 text-primary" />
             </div>
-            <h1 className="text-2xl font-bold text-foreground">Playground Under Progress</h1>
+            <h1 className="text-2xl font-bold leading-tight text-foreground">Playground Under Progress</h1>
             <p className="mx-auto mt-3 max-w-xl text-sm leading-6 text-muted-foreground">
               The C playground is being connected to a self-hosted compiler service. It will be available here once testing is complete.
             </p>
@@ -196,38 +196,38 @@ export default function CPlayground() {
   return (
     <div className="min-h-screen bg-background">
       <Navbar />
-      <main className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
-        <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-          <div>
+      <main className="mx-auto max-w-7xl px-3 py-4 sm:px-6 sm:py-6 lg:px-8">
+        <div className="mb-5 flex flex-col gap-4 sm:mb-6 sm:flex-row sm:items-end sm:justify-between">
+          <div className="min-w-0">
             <Button variant="ghost" size="sm" asChild className="mb-3 px-0 text-muted-foreground hover:text-primary">
               <Link to="/">
                 <ArrowLeft className="mr-2 h-4 w-4" />
                 Topics
               </Link>
             </Button>
-            <div className="flex items-center gap-3">
-              <div className="flex h-11 w-11 items-center justify-center rounded-md border border-border bg-card">
+            <div className="flex items-start gap-3 sm:items-center">
+              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-md border border-border bg-card">
                 <Terminal className="h-5 w-5 text-primary" />
               </div>
-              <div>
+              <div className="min-w-0">
                 <div className="flex flex-wrap items-center gap-2">
-                  <h1 className="text-2xl font-bold text-foreground">C Playground</h1>
+                  <h1 className="text-2xl font-bold leading-tight text-foreground">C Playground</h1>
                   <span className="inline-flex items-center rounded-md border border-primary/30 bg-primary/10 px-2 py-1 text-xs font-medium text-primary">
                     <Shield className="mr-1 h-3.5 w-3.5" />
                     Admin Preview
                   </span>
                 </div>
-                <p className="text-sm text-muted-foreground">{sourceTitle}</p>
+                <p className="mt-1 break-words text-sm text-muted-foreground">{sourceTitle}</p>
               </div>
             </div>
           </div>
 
-          <div className="flex gap-2">
-            <Button variant="outline" onClick={reset}>
+          <div className="grid grid-cols-2 gap-2 sm:flex">
+            <Button variant="outline" onClick={reset} className="w-full sm:w-auto">
               <RotateCcw className="mr-2 h-4 w-4" />
               Reset
             </Button>
-            <Button onClick={run} disabled={loading || !code.trim()}>
+            <Button onClick={run} disabled={loading || !code.trim()} className="w-full sm:w-auto">
               {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Play className="mr-2 h-4 w-4" />}
               {loading ? "Running" : "Run"}
             </Button>
@@ -245,8 +245,8 @@ export default function CPlayground() {
               <span className="font-mono text-xs text-muted-foreground">main.c</span>
             </div>
 
-            <div className="grid min-h-[520px] grid-cols-[3.25rem_minmax(0,1fr)] bg-[#1e1e1e]">
-              <div className="select-none border-r border-white/10 bg-[#252526] py-4 pr-3 text-right font-mono text-sm leading-6 text-slate-500">
+            <div className="grid min-h-[420px] grid-cols-[2.75rem_minmax(0,1fr)] bg-[#1e1e1e] sm:min-h-[520px] sm:grid-cols-[3.25rem_minmax(0,1fr)]">
+              <div className="select-none border-r border-white/10 bg-[#252526] py-4 pr-2 text-right font-mono text-xs leading-6 text-slate-500 sm:pr-3 sm:text-sm">
                 {lineNumbers.map((line) => (
                   <div key={line}>{line}</div>
                 ))}
@@ -258,7 +258,7 @@ export default function CPlayground() {
                   setSourceTitle((current) => current || "Scratch C Program");
                 }}
                 spellCheck={false}
-                className="min-h-[520px] resize-none border-0 bg-[#1e1e1e] p-4 font-mono text-sm leading-6 text-slate-100 outline-none selection:bg-primary/40"
+                className="min-h-[420px] resize-none border-0 bg-[#1e1e1e] p-3 font-mono text-sm leading-6 text-slate-100 outline-none selection:bg-primary/40 sm:min-h-[520px] sm:p-4"
                 aria-label="C source code editor"
               />
             </div>
@@ -272,7 +272,7 @@ export default function CPlayground() {
                 value={stdin}
                 onChange={(event) => setStdin(event.target.value)}
                 placeholder="Input values for scanf go here"
-                className="mt-2 min-h-32 font-mono"
+                className="mt-2 min-h-28 font-mono sm:min-h-32"
               />
             </div>
 
@@ -288,7 +288,7 @@ export default function CPlayground() {
                 </div>
                 {status && <span className="text-xs text-muted-foreground">{status}</span>}
               </div>
-              <pre className="min-h-48 whitespace-pre-wrap break-words p-4 font-mono text-sm text-foreground">
+              <pre className="min-h-40 whitespace-pre-wrap break-words p-4 font-mono text-sm text-foreground sm:min-h-48">
                 {output}
               </pre>
             </div>
