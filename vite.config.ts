@@ -2,29 +2,14 @@ import { defineConfig, loadEnv, type Plugin } from "vite";
 import react from "@vitejs/plugin-react-swc";
 import path from "path";
 
-function toPistonPayload(body: any) {
-  return {
-    language: body.language || "c",
-    version: body.version || "*",
-    files: [
-      {
-        name: body.filename || "main.c",
-        content: body.source_code || body.code || "",
-      },
-    ],
-    stdin: body.stdin || "",
-    compile_timeout: body.compile_timeout || 10000,
-    run_timeout: body.run_timeout || 3000,
-  };
-}
+const WANDBOX_URL = "https://wandbox.org/api/compile.json";
 
-function pistonDevProxy(env: Record<string, string>): Plugin {
+function wandboxDevProxy(env: Record<string, string>): Plugin {
+  const defaultCompiler = env.WANDBOX_COMPILER || "gcc-head-c";
   return {
-    name: "piston-dev-proxy",
+    name: "wandbox-dev-proxy",
     configureServer(server) {
       server.middlewares.use("/api/piston-proxy", async (req, res) => {
-        const pistonExecuteUrl = env.PISTON_API_URL || "https://emkc.org/api/v2/piston/execute";
-        const pistonApiKey = env.PISTON_API_KEY;
         const sendJson = (status: number, body: unknown) => {
           res.statusCode = status;
           res.setHeader("Content-Type", "application/json");
@@ -32,42 +17,52 @@ function pistonDevProxy(env: Record<string, string>): Plugin {
         };
 
         try {
-          if (req.method === "POST") {
-            const chunks: Buffer[] = [];
-            for await (const chunk of req) {
-              chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
-            }
-
-            const rawBody = Buffer.concat(chunks).toString("utf8");
-            const payload = toPistonPayload(rawBody ? JSON.parse(rawBody) : {});
-
-            if (!payload.files[0].content.trim()) {
-              sendJson(400, { error: "source_code is required" });
-              return;
-            }
-
-            const upstream = await fetch(pistonExecuteUrl, {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/json",
-                ...(pistonApiKey ? { Authorization: `Bearer ${pistonApiKey}` } : {}),
-              },
-              body: JSON.stringify(payload),
-            });
-
-            const contentType = upstream.headers.get("content-type") || "";
-            const data: Record<string, unknown> = contentType.includes("application/json")
-              ? ((await upstream.json()) as Record<string, unknown>)
-              : { text: await upstream.text() };
-
-            sendJson(upstream.status, {
-              upstream: { provider: "piston", status: upstream.status, contentType },
-              ...data,
-            });
+          if (req.method !== "POST") {
+            sendJson(405, { error: "Method not allowed" });
             return;
           }
 
-          sendJson(405, { error: "Method not allowed" });
+          const chunks: Buffer[] = [];
+          for await (const chunk of req) {
+            chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+          }
+          const rawBody = Buffer.concat(chunks).toString("utf8");
+          const body = rawBody ? JSON.parse(rawBody) : {};
+          const code: string = body.source_code || body.code || "";
+          if (!code.trim()) {
+            sendJson(400, { error: "source_code is required" });
+            return;
+          }
+
+          const payload = {
+            compiler: body.compiler || defaultCompiler,
+            code,
+            stdin: body.stdin || "",
+            "compiler-option-raw": "",
+            "runtime-option-raw": "",
+            save: false,
+          };
+
+          const upstream = await fetch(WANDBOX_URL, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload),
+          });
+
+          const data: any = await upstream.json().catch(async () => ({ text: await upstream.text() }));
+
+          sendJson(upstream.status, {
+            upstream: { provider: "wandbox", status: upstream.status },
+            compile: { output: data.compiler_message || data.compiler_error || "" },
+            run: {
+              stdout: data.program_output || "",
+              stderr: data.program_error || "",
+              output: data.program_message || "",
+              code: data.status !== undefined ? Number(data.status) : null,
+              signal: data.signal || null,
+            },
+            raw: data,
+          });
         } catch (error) {
           sendJson(500, { error: error instanceof Error ? error.message : String(error) });
         }
@@ -88,7 +83,7 @@ export default defineConfig(({ mode }) => {
         overlay: false,
       },
     },
-    plugins: [react(), pistonDevProxy(env)],
+    plugins: [react(), wandboxDevProxy(env)],
     resolve: {
       alias: {
         "@": path.resolve(__dirname, "./src"),
