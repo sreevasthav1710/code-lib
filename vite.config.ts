@@ -56,8 +56,8 @@ function pistonDevProxy(env: Record<string, string>): Plugin {
             });
 
             const contentType = upstream.headers.get("content-type") || "";
-            const data = contentType.includes("application/json")
-              ? await upstream.json()
+            const data: Record<string, unknown> = contentType.includes("application/json")
+              ? ((await upstream.json()) as Record<string, unknown>)
               : { text: await upstream.text() };
 
             sendJson(upstream.status, {
