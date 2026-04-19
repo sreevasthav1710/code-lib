@@ -1,10 +1,8 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
-import { AlertCircle, ArrowLeft, CheckCircle2, Loader2, Play, RotateCcw, Terminal } from "lucide-react";
+import { AlertCircle, ArrowLeft, Loader2, Play, RotateCcw, Square, Terminal } from "lucide-react";
 import { Navbar } from "@/components/Navbar";
 import { Button } from "@/components/ui/button";
-import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
 
 const DEFAULT_CODE = `#include <stdio.h>
 
@@ -16,33 +14,16 @@ int main() {
 const PLAYGROUND_CODE_KEY = "codelib-playground-code";
 const PLAYGROUND_TITLE_KEY = "codelib-playground-title";
 
-type PlaygroundState = {
-  code?: string;
-  title?: string;
-};
+type PlaygroundState = { code?: string; title?: string };
 
-type PistonStage = {
-  stdout?: string;
-  stderr?: string;
-  output?: string;
-  code?: number | null;
-  signal?: string | null;
-};
-
-type PistonResult = {
-  language?: string;
-  version?: string;
-  message?: string | null;
+type RunResult = {
+  compile?: { output?: string };
+  run?: { stdout?: string; stderr?: string; code?: number | null };
   error?: string | null;
-  text?: string | null;
-  upstream?: {
-    provider?: string;
-    status?: number;
-    contentType?: string;
-  };
-  compile?: PistonStage;
-  run?: PistonStage;
+  upstream?: { status?: number };
 };
+
+type Line = { kind: "out" | "err" | "in" | "info"; text: string };
 
 function getInitialCode(state: PlaygroundState | null) {
   if (state?.code) return state.code;
@@ -54,32 +35,6 @@ function getInitialTitle(state: PlaygroundState | null) {
   if (state?.title) return state.title;
   if (typeof window === "undefined") return "Scratch C Program";
   return sessionStorage.getItem(PLAYGROUND_TITLE_KEY) || "Scratch C Program";
-}
-
-function formatResult(result: PistonResult) {
-  if (result.error) return result.error;
-  if (result.text) return result.text;
-
-  const parts = [
-    result.compile?.output,
-    result.run?.stdout,
-    result.run?.stderr,
-    result.message,
-  ].filter(Boolean);
-
-  if (parts.length > 0) return parts.join("\n");
-  return "Program finished with no output.";
-}
-
-function formatRequestError(response: Response, result: PistonResult) {
-  const upstreamStatus = result.upstream?.status ? `, upstream ${result.upstream.status}` : "";
-  const detail = result.error || result.message || result.text || result.compile?.output || result.run?.output;
-
-  if (detail) {
-    return `Piston request failed (HTTP ${response.status}${upstreamStatus}): ${detail}`;
-  }
-
-  return `Piston request failed (HTTP ${response.status}${upstreamStatus}).`;
 }
 
 function hasMainFunction(src: string) {
@@ -105,7 +60,6 @@ function buildAutoMain(fns: string[]): string {
     .join("\n");
   return `
 
-/* ---- Auto-generated main() by C Playground ---- */
 #include <string.h>
 int main(void) {
     char __cmd[64];
@@ -126,77 +80,166 @@ function preprocessCode(src: string): { code: string; injected: string[] } {
   return { code: src + buildAutoMain(fns), injected: fns };
 }
 
+async function compileAndRun(source: string, stdin: string): Promise<RunResult> {
+  const response = await fetch("/api/piston-proxy", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ source_code: source, stdin, language: "c", version: "*" }),
+  });
+  const ct = response.headers.get("content-type") || "";
+  const result: RunResult = ct.includes("application/json")
+    ? await response.json()
+    : { error: await response.text() };
+  if (!response.ok && !result.error) {
+    result.error = `Request failed (HTTP ${response.status})`;
+  }
+  return result;
+}
+
+function extractError(result: RunResult): string | null {
+  if (result.error) return result.error;
+  const compile = (result.compile?.output || "").trim();
+  if (compile) return compile;
+  const stderr = (result.run?.stderr || "").trim();
+  if (stderr && result.run?.code !== 0) return stderr;
+  return null;
+}
+
 export default function CPlayground() {
   const location = useLocation();
   const locationState = location.state as PlaygroundState | null;
   const [code, setCode] = useState(() => getInitialCode(locationState));
   const [sourceTitle, setSourceTitle] = useState(() => getInitialTitle(locationState));
-  const [stdin, setStdin] = useState("");
-  const [output, setOutput] = useState("Output will appear here after you run the program.");
-  const [status, setStatus] = useState<string | null>(null);
-  const [raw, setRaw] = useState<PistonResult | null>(null);
-  const [showRaw, setShowRaw] = useState(false);
-  const [loading, setLoading] = useState(false);
+  const [lines, setLines] = useState<Line[]>([]);
+  const [stdinBuffer, setStdinBuffer] = useState("");
+  const [inputValue, setInputValue] = useState("");
+  const [running, setRunning] = useState(false);
+  const [awaitingInput, setAwaitingInput] = useState(false);
+  const [finished, setFinished] = useState(false);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [lastStdout, setLastStdout] = useState("");
+  const sourceRef = useRef("");
+  const terminalRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
 
-  const lineNumbers = useMemo(() => {
-    return Array.from({ length: Math.max(code.split("\n").length, 12) }, (_, i) => i + 1);
-  }, [code]);
+  const lineNumbers = useMemo(
+    () => Array.from({ length: Math.max(code.split("\n").length, 12) }, (_, i) => i + 1),
+    [code],
+  );
 
-  async function run() {
-    setLoading(true);
-    setRaw(null);
-    setStatus("Sending to Piston");
-    setOutput("Running...");
+  useEffect(() => {
+    sessionStorage.setItem(PLAYGROUND_CODE_KEY, code);
+    sessionStorage.setItem(PLAYGROUND_TITLE_KEY, sourceTitle);
+  }, [code, sourceTitle]);
+
+  useEffect(() => {
+    if (terminalRef.current) {
+      terminalRef.current.scrollTop = terminalRef.current.scrollHeight;
+    }
+  }, [lines, awaitingInput]);
+
+  useEffect(() => {
+    if (awaitingInput) inputRef.current?.focus();
+  }, [awaitingInput]);
+
+  function appendOutputDiff(prevStdout: string, newStdout: string) {
+    const diff = newStdout.startsWith(prevStdout) ? newStdout.slice(prevStdout.length) : newStdout;
+    if (!diff) return;
+    setLines((prev) => [...prev, { kind: "out", text: diff }]);
+  }
+
+  async function start() {
+    const { code: finalCode } = preprocessCode(code);
+    sourceRef.current = finalCode;
+    setLines([]);
+    setStdinBuffer("");
+    setLastStdout("");
+    setErrorMsg(null);
+    setFinished(false);
+    setRunning(true);
+    setAwaitingInput(false);
 
     try {
-      const { code: finalCode, injected } = preprocessCode(code);
-      const payload = {
-        source_code: finalCode,
-        stdin,
-        language: "c",
-        version: "*",
-      };
-
-      const response = await fetch("/api/piston-proxy", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-      const contentType = response.headers.get("content-type") || "";
-      const result: PistonResult = contentType.includes("application/json")
-        ? await response.json()
-        : { text: await response.text() };
-
-      if (!response.ok) {
-        throw new Error(formatRequestError(response, result));
+      const result = await compileAndRun(finalCode, "");
+      const err = extractError(result);
+      if (err) {
+        setErrorMsg(err);
+        setFinished(true);
+        return;
       }
+      const stdout = result.run?.stdout || "";
+      appendOutputDiff("", stdout);
+      setLastStdout(stdout);
 
-      setRaw(result);
-      setStatus(result.run?.code === 0 ? "Accepted" : "Finished");
-      const banner = injected.length
-        ? `[Auto-main injected. Available functions: ${injected.join(", ")}. Type one name per stdin line; "exit" stops.]\n\n`
-        : "";
-      setOutput(banner + formatResult(result));
-    } catch (error: unknown) {
-      setStatus("Run failed");
-      setOutput(error instanceof Error ? error.message : String(error));
+      // If exit code is 0 and no scanf-style trailing wait, we still don't know if it wanted input.
+      // Heuristic: if the program produced output without reading input AND exited cleanly,
+      // assume it's waiting for input (since we sent empty stdin). User can stop with Stop button.
+      setAwaitingInput(true);
+    } catch (e) {
+      setErrorMsg(e instanceof Error ? e.message : String(e));
+      setFinished(true);
     } finally {
-      setLoading(false);
+      setRunning(false);
     }
+  }
+
+  async function submitInput(value: string) {
+    if (!value && value !== "") return;
+    const newBuffer = stdinBuffer + value + "\n";
+    setStdinBuffer(newBuffer);
+    setLines((prev) => [...prev, { kind: "in", text: value }]);
+    setInputValue("");
+    setAwaitingInput(false);
+    setRunning(true);
+
+    try {
+      const result = await compileAndRun(sourceRef.current, newBuffer);
+      const err = extractError(result);
+      if (err) {
+        setErrorMsg(err);
+        setFinished(true);
+        return;
+      }
+      const stdout = result.run?.stdout || "";
+      appendOutputDiff(lastStdout, stdout);
+      setLastStdout(stdout);
+      // If output didn't grow, the program likely terminated reading the input
+      const grew = stdout.length > lastStdout.length;
+      const exited = result.run?.code === 0 && !grew;
+      if (exited) {
+        setFinished(true);
+      } else {
+        setAwaitingInput(true);
+      }
+    } catch (e) {
+      setErrorMsg(e instanceof Error ? e.message : String(e));
+      setFinished(true);
+    } finally {
+      setRunning(false);
+    }
+  }
+
+  function stop() {
+    setAwaitingInput(false);
+    setRunning(false);
+    setFinished(true);
+    setLines((prev) => [...prev, { kind: "info", text: "[stopped]" }]);
   }
 
   function reset() {
     setCode(DEFAULT_CODE);
     setSourceTitle("Scratch C Program");
-    setStdin("");
-    setOutput("Output will appear here after you run the program.");
-    setStatus(null);
-    setRaw(null);
-    if (typeof window !== "undefined") {
-      sessionStorage.removeItem(PLAYGROUND_CODE_KEY);
-      sessionStorage.removeItem(PLAYGROUND_TITLE_KEY);
-    }
+    setLines([]);
+    setStdinBuffer("");
+    setLastStdout("");
+    setErrorMsg(null);
+    setFinished(false);
+    setAwaitingInput(false);
+    sessionStorage.removeItem(PLAYGROUND_CODE_KEY);
+    sessionStorage.removeItem(PLAYGROUND_TITLE_KEY);
   }
+
+  const idle = !running && !awaitingInput && !finished && !errorMsg;
 
   return (
     <div className="min-h-screen bg-background">
@@ -215,23 +258,28 @@ export default function CPlayground() {
                 <Terminal className="h-5 w-5 text-primary" />
               </div>
               <div className="min-w-0">
-                <div className="flex flex-wrap items-center gap-2">
-                  <h1 className="text-2xl font-bold leading-tight text-foreground">C Playground</h1>
-                </div>
+                <h1 className="text-2xl font-bold leading-tight text-foreground">C Playground</h1>
                 <p className="mt-1 break-words text-sm text-muted-foreground">{sourceTitle}</p>
               </div>
             </div>
           </div>
 
           <div className="grid grid-cols-2 gap-2 sm:flex">
-            <Button variant="outline" onClick={reset} className="w-full sm:w-auto">
+            <Button variant="outline" onClick={reset} disabled={running}>
               <RotateCcw className="mr-2 h-4 w-4" />
               Reset
             </Button>
-            <Button onClick={run} disabled={loading || !code.trim()} className="w-full sm:w-auto">
-              {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Play className="mr-2 h-4 w-4" />}
-              {loading ? "Running" : "Run"}
-            </Button>
+            {awaitingInput || running ? (
+              <Button variant="destructive" onClick={stop} disabled={running}>
+                <Square className="mr-2 h-4 w-4" />
+                Stop
+              </Button>
+            ) : (
+              <Button onClick={start} disabled={!code.trim()}>
+                <Play className="mr-2 h-4 w-4" />
+                Run
+              </Button>
+            )}
           </div>
         </div>
 
@@ -239,7 +287,7 @@ export default function CPlayground() {
           <section className="overflow-hidden rounded-md border border-border bg-card">
             <div className="flex h-10 items-center justify-between border-b border-border bg-code-header px-4">
               <div className="flex items-center gap-2">
-                <span className="h-3 w-3 rounded-full bg-red-500" />
+                <span className="h-3 w-3 rounded-full bg-destructive/80" />
                 <span className="h-3 w-3 rounded-full bg-yellow-500" />
                 <span className="h-3 w-3 rounded-full bg-green-500" />
               </div>
@@ -254,9 +302,9 @@ export default function CPlayground() {
               </div>
               <textarea
                 value={code}
-                onChange={(event) => {
-                  setCode(event.target.value);
-                  setSourceTitle((current) => current || "Scratch C Program");
+                onChange={(e) => {
+                  setCode(e.target.value);
+                  setSourceTitle((cur) => cur || "Scratch C Program");
                 }}
                 spellCheck={false}
                 className="min-h-[420px] resize-none border-0 bg-[#1e1e1e] p-3 font-mono text-sm leading-6 text-slate-100 outline-none selection:bg-primary/40 sm:min-h-[520px] sm:p-4"
@@ -265,49 +313,83 @@ export default function CPlayground() {
             </div>
           </section>
 
-          <section className="space-y-5">
-            <div className="rounded-md border border-border bg-card p-4">
-              <Label htmlFor="stdin" className="text-sm font-medium">stdin</Label>
-              <Textarea
-                id="stdin"
-                value={stdin}
-                onChange={(event) => setStdin(event.target.value)}
-                placeholder="Input values for scanf go here"
-                className="mt-2 min-h-28 font-mono sm:min-h-32"
-              />
-            </div>
-
-            <div className="rounded-md border border-border bg-card">
-              <div className="flex items-center justify-between border-b border-border px-4 py-3">
-                <div className="flex items-center gap-2">
-                  {status === "Run failed" ? (
-                    <AlertCircle className="h-4 w-4 text-destructive" />
-                  ) : (
-                    <CheckCircle2 className="h-4 w-4 text-primary" />
-                  )}
-                  <Label className="text-sm font-medium">Output</Label>
-                </div>
-                {status && <span className="text-xs text-muted-foreground">{status}</span>}
+          <section className="overflow-hidden rounded-md border border-border bg-[#0d0d0d]">
+            <div className="flex h-10 items-center justify-between border-b border-white/10 px-4">
+              <div className="flex items-center gap-2">
+                <Terminal className="h-4 w-4 text-green-400" />
+                <span className="font-mono text-xs text-slate-300">terminal</span>
               </div>
-              <pre className="min-h-40 whitespace-pre-wrap break-words p-4 font-mono text-sm text-foreground sm:min-h-48">
-                {output}
-              </pre>
+              <span className="font-mono text-xs text-slate-500">
+                {running ? "running…" : awaitingInput ? "waiting for input" : finished ? "exited" : errorMsg ? "error" : "idle"}
+              </span>
             </div>
 
-            <div className="rounded-md border border-border bg-card p-4">
-              <label className="flex items-center gap-2 text-sm text-muted-foreground">
-                <input
-                  type="checkbox"
-                  checked={showRaw}
-                  onChange={(event) => setShowRaw(event.target.checked)}
-                  className="h-4 w-4"
-                />
-                Show raw Piston response
-              </label>
-              {showRaw && (
-                <pre className="mt-3 max-h-64 overflow-auto rounded-md bg-muted p-3 text-xs text-muted-foreground">
-                  {raw ? JSON.stringify(raw, null, 2) : "No raw response yet."}
-                </pre>
+            <div
+              ref={terminalRef}
+              onClick={() => inputRef.current?.focus()}
+              className="min-h-[420px] max-h-[600px] overflow-auto p-4 font-mono text-sm leading-6 sm:min-h-[520px]"
+            >
+              {idle && (
+                <div className="text-slate-500">Click Run to start. Type input below when prompted.</div>
+              )}
+
+              {errorMsg ? (
+                <div className="flex items-start gap-2 rounded-md border border-destructive/40 bg-destructive/10 p-3 text-destructive">
+                  <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+                  <pre className="whitespace-pre-wrap break-words text-xs">{errorMsg}</pre>
+                </div>
+              ) : (
+                <>
+                  {lines.map((line, i) => {
+                    if (line.kind === "in") {
+                      return (
+                        <div key={i} className="text-cyan-400">
+                          <span className="text-slate-500">›</span> {line.text}
+                        </div>
+                      );
+                    }
+                    if (line.kind === "info") {
+                      return <div key={i} className="text-slate-500">{line.text}</div>;
+                    }
+                    return (
+                      <pre key={i} className="whitespace-pre-wrap break-words text-slate-100">
+                        {line.text}
+                      </pre>
+                    );
+                  })}
+
+                  {awaitingInput && (
+                    <form
+                      onSubmit={(e) => {
+                        e.preventDefault();
+                        submitInput(inputValue);
+                      }}
+                      className="mt-1 flex items-center gap-2"
+                    >
+                      <span className="text-slate-500">›</span>
+                      <input
+                        ref={inputRef}
+                        value={inputValue}
+                        onChange={(e) => setInputValue(e.target.value)}
+                        autoFocus
+                        spellCheck={false}
+                        className="flex-1 border-0 bg-transparent p-0 font-mono text-sm text-cyan-400 outline-none"
+                        placeholder="Type input and press Enter…"
+                      />
+                    </form>
+                  )}
+
+                  {running && !awaitingInput && (
+                    <div className="mt-2 flex items-center gap-2 text-slate-500">
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      <span className="text-xs">running…</span>
+                    </div>
+                  )}
+
+                  {finished && !errorMsg && (
+                    <div className="mt-2 text-xs text-slate-500">[program exited]</div>
+                  )}
+                </>
               )}
             </div>
           </section>
