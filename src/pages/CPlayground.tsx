@@ -82,6 +82,50 @@ function formatRequestError(response: Response, result: PistonResult) {
   return `Piston request failed (HTTP ${response.status}${upstreamStatus}).`;
 }
 
+function hasMainFunction(src: string) {
+  const stripped = src.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/.*$/gm, "");
+  return /\b(?:int|void)\s+main\s*\(/.test(stripped);
+}
+
+function extractZeroArgVoidFns(src: string): string[] {
+  const stripped = src.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/.*$/gm, "");
+  const re = /\bvoid\s+([a-zA-Z_][a-zA-Z0-9_]*)\s*\(\s*(?:void)?\s*\)\s*\{/g;
+  const names: string[] = [];
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(stripped)) !== null) {
+    if (m[1] !== "main" && !names.includes(m[1])) names.push(m[1]);
+  }
+  return names;
+}
+
+function buildAutoMain(fns: string[]): string {
+  if (fns.length === 0) return "";
+  const dispatch = fns
+    .map((fn) => `        if (strcmp(__cmd, "${fn}") == 0) { ${fn}(); continue; }`)
+    .join("\n");
+  return `
+
+/* ---- Auto-generated main() by C Playground ---- */
+#include <string.h>
+int main(void) {
+    char __cmd[64];
+    while (scanf("%63s", __cmd) == 1) {
+        if (strcmp(__cmd, "exit") == 0 || strcmp(__cmd, "quit") == 0) break;
+${dispatch}
+        printf("Unknown function: %s\\n", __cmd);
+    }
+    return 0;
+}
+`;
+}
+
+function preprocessCode(src: string): { code: string; injected: string[] } {
+  if (hasMainFunction(src)) return { code: src, injected: [] };
+  const fns = extractZeroArgVoidFns(src);
+  if (fns.length === 0) return { code: src, injected: [] };
+  return { code: src + buildAutoMain(fns), injected: fns };
+}
+
 export default function CPlayground() {
   const location = useLocation();
   const locationState = location.state as PlaygroundState | null;
@@ -105,8 +149,9 @@ export default function CPlayground() {
     setOutput("Running...");
 
     try {
+      const { code: finalCode, injected } = preprocessCode(code);
       const payload = {
-        source_code: code,
+        source_code: finalCode,
         stdin,
         language: "c",
         version: "*",
@@ -128,7 +173,10 @@ export default function CPlayground() {
 
       setRaw(result);
       setStatus(result.run?.code === 0 ? "Accepted" : "Finished");
-      setOutput(formatResult(result));
+      const banner = injected.length
+        ? `[Auto-main injected. Available functions: ${injected.join(", ")}. Type one name per stdin line; "exit" stops.]\n\n`
+        : "";
+      setOutput(banner + formatResult(result));
     } catch (error: unknown) {
       setStatus("Run failed");
       setOutput(error instanceof Error ? error.message : String(error));
