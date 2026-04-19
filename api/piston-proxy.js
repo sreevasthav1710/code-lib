@@ -1,21 +1,6 @@
-const PISTON_EXECUTE_URL = process.env.PISTON_API_URL || 'https://emkc.org/api/v2/piston/execute';
-const PISTON_API_KEY = process.env.PISTON_API_KEY;
-
-function toPistonPayload(body = {}) {
-  return {
-    language: body.language || 'c',
-    version: body.version || '*',
-    files: [
-      {
-        name: body.filename || 'main.c',
-        content: body.source_code || body.code || '',
-      },
-    ],
-    stdin: body.stdin || '',
-    compile_timeout: body.compile_timeout || 10000,
-    run_timeout: body.run_timeout || 3000,
-  };
-}
+// Wandbox proxy (free, no API key required)
+const WANDBOX_URL = 'https://wandbox.org/api/compile.json';
+const DEFAULT_COMPILER = process.env.WANDBOX_COMPILER || 'gcc-head-c';
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
@@ -24,34 +9,41 @@ export default async function handler(req, res) {
   }
 
   try {
-    const payload = toPistonPayload(req.body);
-
-    if (!payload.files[0].content.trim()) {
+    const body = req.body || {};
+    const code = body.source_code || body.code || '';
+    if (!code.trim()) {
       res.status(400).json({ error: 'source_code is required' });
       return;
     }
 
-    const upstream = await fetch(PISTON_EXECUTE_URL, {
+    const payload = {
+      compiler: body.compiler || DEFAULT_COMPILER,
+      code,
+      stdin: body.stdin || '',
+      'compiler-option-raw': '',
+      'runtime-option-raw': '',
+      save: false,
+    };
+
+    const upstream = await fetch(WANDBOX_URL, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        ...(PISTON_API_KEY ? { Authorization: `Bearer ${PISTON_API_KEY}` } : {}),
-      },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
     });
 
-    const contentType = (upstream.headers.get('content-type') || '').toLowerCase();
-    const body = contentType.includes('application/json')
-      ? await upstream.json()
-      : { text: await upstream.text() };
+    const data = await upstream.json().catch(async () => ({ text: await upstream.text() }));
 
     res.status(upstream.status).json({
-      upstream: {
-        provider: 'piston',
-        status: upstream.status,
-        contentType,
+      upstream: { provider: 'wandbox', status: upstream.status },
+      compile: { output: data.compiler_message || data.compiler_error || '' },
+      run: {
+        stdout: data.program_output || '',
+        stderr: data.program_error || '',
+        output: data.program_message || '',
+        code: data.status !== undefined ? Number(data.status) : null,
+        signal: data.signal || null,
       },
-      ...body,
+      raw: data,
     });
   } catch (error) {
     res.status(500).json({ error: error instanceof Error ? error.message : String(error) });
