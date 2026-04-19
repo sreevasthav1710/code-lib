@@ -203,14 +203,9 @@ export default function CPlayground() {
       const stdout = result.run?.stdout || "";
       appendOutputDiff(lastStdout, stdout);
       setLastStdout(stdout);
-      // If output didn't grow, the program likely terminated reading the input
-      const grew = stdout.length > lastStdout.length;
-      const exited = result.run?.code === 0 && !grew;
-      if (exited) {
-        setFinished(true);
-      } else {
-        setAwaitingInput(true);
-      }
+      // Hosted compilers can't distinguish "blocked on scanf" from "exited",
+      // so we always keep the input prompt open. User clicks Stop when done.
+      setAwaitingInput(true);
     } catch (e) {
       setErrorMsg(e instanceof Error ? e.message : String(e));
       setFinished(true);
