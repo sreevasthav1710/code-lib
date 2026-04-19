@@ -1,11 +1,10 @@
 import { useMemo, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
-import { AlertCircle, ArrowLeft, CheckCircle2, Clock, Loader2, Play, RotateCcw, Shield, Terminal } from "lucide-react";
+import { AlertCircle, ArrowLeft, CheckCircle2, Loader2, Play, RotateCcw, Terminal } from "lucide-react";
 import { Navbar } from "@/components/Navbar";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { useAuth } from "@/hooks/useAuth";
 
 const DEFAULT_CODE = `#include <stdio.h>
 
@@ -85,7 +84,6 @@ function formatRequestError(response: Response, result: PistonResult) {
 
 export default function CPlayground() {
   const location = useLocation();
-  const { isAdmin, loading: authLoading } = useAuth();
   const locationState = location.state as PlaygroundState | null;
   const [code, setCode] = useState(() => getInitialCode(locationState));
   const [sourceTitle, setSourceTitle] = useState(() => getInitialTitle(locationState));
@@ -152,47 +150,6 @@ export default function CPlayground() {
     }
   }
 
-  if (authLoading) {
-    return (
-      <div className="min-h-screen bg-background">
-        <Navbar />
-        <main className="mx-auto flex min-h-[calc(100vh-4rem)] max-w-4xl items-center justify-center px-4 py-8">
-          <div className="flex items-center gap-3 text-muted-foreground">
-            <Loader2 className="h-5 w-5 animate-spin" />
-            <span>Loading playground...</span>
-          </div>
-        </main>
-      </div>
-    );
-  }
-
-  if (!isAdmin) {
-    return (
-      <div className="min-h-screen bg-background">
-        <Navbar />
-        <main className="mx-auto flex min-h-[calc(100vh-4rem)] max-w-4xl items-center justify-center px-4 py-8 sm:py-12">
-          <section className="w-full rounded-md border border-border bg-card p-6 text-center shadow-sm sm:p-8">
-            <div className="mx-auto mb-5 flex h-14 w-14 items-center justify-center rounded-md border border-primary/30 bg-primary/10">
-              <Clock className="h-7 w-7 text-primary" />
-            </div>
-            <h1 className="text-2xl font-bold leading-tight text-foreground">Playground Under Progress</h1>
-            <p className="mx-auto mt-3 max-w-xl text-sm leading-6 text-muted-foreground">
-              The C playground is being connected to a self-hosted compiler service. It will be available here once testing is complete.
-            </p>
-            <div className="mt-6 flex justify-center">
-              <Button asChild>
-                <Link to="/">
-                  <ArrowLeft className="mr-2 h-4 w-4" />
-                  Back to Topics
-                </Link>
-              </Button>
-            </div>
-          </section>
-        </main>
-      </div>
-    );
-  }
-
   return (
     <div className="min-h-screen bg-background">
       <Navbar />
@@ -212,10 +169,6 @@ export default function CPlayground() {
               <div className="min-w-0">
                 <div className="flex flex-wrap items-center gap-2">
                   <h1 className="text-2xl font-bold leading-tight text-foreground">C Playground</h1>
-                  <span className="inline-flex items-center rounded-md border border-primary/30 bg-primary/10 px-2 py-1 text-xs font-medium text-primary">
-                    <Shield className="mr-1 h-3.5 w-3.5" />
-                    Admin Preview
-                  </span>
                 </div>
                 <p className="mt-1 break-words text-sm text-muted-foreground">{sourceTitle}</p>
               </div>
