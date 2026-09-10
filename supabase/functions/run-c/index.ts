@@ -34,7 +34,19 @@ Deno.serve(async (req) => {
       }),
     });
 
-    const data = await upstream.json().catch(async () => ({ text: await upstream.text() }));
+    const rawText = await upstream.text();
+    let data: Record<string, unknown> = {};
+    try {
+      data = JSON.parse(rawText);
+    } catch {
+      data = {};
+      if (!upstream.ok) {
+        return new Response(
+          JSON.stringify({ error: `Compiler service error (HTTP ${upstream.status}): ${rawText.slice(0, 300)}` }),
+          { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+        );
+      }
+    }
 
     return new Response(
       JSON.stringify({
