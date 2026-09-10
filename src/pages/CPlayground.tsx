@@ -3,6 +3,7 @@ import { Link, useLocation } from "react-router-dom";
 import { AlertCircle, ArrowLeft, Loader2, Play, RotateCcw, Square, Terminal } from "lucide-react";
 import { Navbar } from "@/components/Navbar";
 import { Button } from "@/components/ui/button";
+import { supabase } from "@/integrations/supabase/client";
 
 const DEFAULT_CODE = `#include <stdio.h>
 
@@ -81,19 +82,13 @@ function preprocessCode(src: string): { code: string; injected: string[] } {
 }
 
 async function compileAndRun(source: string, stdin: string): Promise<RunResult> {
-  const response = await fetch("/api/piston-proxy", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ source_code: source, stdin, language: "c", version: "*" }),
+  const { data, error } = await supabase.functions.invoke("run-c", {
+    body: { source_code: source, stdin },
   });
-  const ct = response.headers.get("content-type") || "";
-  const result: RunResult = ct.includes("application/json")
-    ? await response.json()
-    : { error: await response.text() };
-  if (!response.ok && !result.error) {
-    result.error = `Request failed (HTTP ${response.status})`;
+  if (error) {
+    return { error: error.message || "Failed to reach the compiler" };
   }
-  return result;
+  return (data as RunResult) ?? { error: "Empty response from compiler" };
 }
 
 function extractError(result: RunResult): string | null {

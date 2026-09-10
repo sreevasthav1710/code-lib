@@ -1,1 +1,4 @@
 project_id = "iecsukpzclessezjsabs"
+
+[functions.run-c]
+verify_jwt = false
