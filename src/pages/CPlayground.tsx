@@ -4,6 +4,7 @@ import { AlertCircle, ArrowLeft, Loader2, Play, RotateCcw, Square, Terminal } fr
 import { Navbar } from "@/components/Navbar";
 import { Button } from "@/components/ui/button";
 import { supabase } from "@/integrations/supabase/client";
+import { runPython } from "@/lib/pyodideRunner";
 
 const DEFAULT_CODE = `#include <stdio.h>
 
@@ -12,10 +13,18 @@ int main() {
   return 0;
 }`;
 
+const DEFAULT_PY_CODE = `name = input("Your name: ")
+print("Hello,", name)
+`;
+
 const PLAYGROUND_CODE_KEY = "codelib-playground-code";
 const PLAYGROUND_TITLE_KEY = "codelib-playground-title";
+const PLAYGROUND_PY_KEY = "codelib-playground-python";
+const PLAYGROUND_LANG_KEY = "codelib-playground-lang";
 
-type PlaygroundState = { code?: string; title?: string };
+type Lang = "c" | "python";
+
+type PlaygroundState = { code?: string; title?: string; language?: Lang };
 
 type RunResult = {
   compile?: { output?: string };
@@ -30,6 +39,17 @@ function getInitialCode(state: PlaygroundState | null) {
   if (state?.code) return state.code;
   if (typeof window === "undefined") return DEFAULT_CODE;
   return sessionStorage.getItem(PLAYGROUND_CODE_KEY) || DEFAULT_CODE;
+}
+
+function getInitialPyCode() {
+  if (typeof window === "undefined") return DEFAULT_PY_CODE;
+  return sessionStorage.getItem(PLAYGROUND_PY_KEY) || DEFAULT_PY_CODE;
+}
+
+function getInitialLang(state: PlaygroundState | null): Lang {
+  if (state?.language) return state.language;
+  if (typeof window === "undefined") return "c";
+  return (sessionStorage.getItem(PLAYGROUND_LANG_KEY) as Lang) || "c";
 }
 
 function getInitialTitle(state: PlaygroundState | null) {
@@ -103,12 +123,16 @@ function extractError(result: RunResult): string | null {
 export default function CPlayground() {
   const location = useLocation();
   const locationState = location.state as PlaygroundState | null;
+  const [language, setLanguage] = useState<Lang>(() => getInitialLang(locationState));
   const [code, setCode] = useState(() => getInitialCode(locationState));
+  const [pyCode, setPyCode] = useState(() => getInitialPyCode());
   const [sourceTitle, setSourceTitle] = useState(() => getInitialTitle(locationState));
   const [lines, setLines] = useState<Line[]>([]);
   const [stdinBuffer, setStdinBuffer] = useState("");
+  const [pyInputs, setPyInputs] = useState<string[]>([]);
   const [inputValue, setInputValue] = useState("");
   const [running, setRunning] = useState(false);
+  const [status, setStatus] = useState<string | null>(null);
   const [awaitingInput, setAwaitingInput] = useState(false);
   const [finished, setFinished] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -117,15 +141,21 @@ export default function CPlayground() {
   const terminalRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
+  const isPython = language === "python";
+  const activeCode = isPython ? pyCode : code;
+  const setActiveCode = isPython ? setPyCode : setCode;
+
   const lineNumbers = useMemo(
-    () => Array.from({ length: Math.max(code.split("\n").length, 12) }, (_, i) => i + 1),
-    [code],
+    () => Array.from({ length: Math.max(activeCode.split("\n").length, 12) }, (_, i) => i + 1),
+    [activeCode],
   );
 
   useEffect(() => {
     sessionStorage.setItem(PLAYGROUND_CODE_KEY, code);
+    sessionStorage.setItem(PLAYGROUND_PY_KEY, pyCode);
     sessionStorage.setItem(PLAYGROUND_TITLE_KEY, sourceTitle);
-  }, [code, sourceTitle]);
+    sessionStorage.setItem(PLAYGROUND_LANG_KEY, language);
+  }, [code, pyCode, sourceTitle, language]);
 
   useEffect(() => {
     if (terminalRef.current) {
@@ -143,16 +173,54 @@ export default function CPlayground() {
     setLines((prev) => [...prev, { kind: "out", text: diff }]);
   }
 
-  async function start() {
-    const { code: finalCode } = preprocessCode(code);
-    sourceRef.current = finalCode;
+  function resetRunState() {
     setLines([]);
     setStdinBuffer("");
+    setPyInputs([]);
     setLastStdout("");
     setErrorMsg(null);
     setFinished(false);
-    setRunning(true);
     setAwaitingInput(false);
+    setStatus(null);
+  }
+
+  async function runPythonWith(inputs: string[], prevStdout: string) {
+    setRunning(true);
+    try {
+      const result = await runPython(pyCode, inputs, setStatus);
+      setStatus(null);
+      appendOutputDiff(prevStdout, result.stdout);
+      setLastStdout(result.stdout);
+      if (result.error) {
+        setErrorMsg(result.error);
+        setFinished(true);
+        return;
+      }
+      if (result.needsInput) {
+        setAwaitingInput(true);
+      } else {
+        setFinished(true);
+      }
+    } catch (e) {
+      setStatus(null);
+      setErrorMsg(e instanceof Error ? e.message : String(e));
+      setFinished(true);
+    } finally {
+      setRunning(false);
+    }
+  }
+
+  async function start() {
+    resetRunState();
+
+    if (isPython) {
+      await runPythonWith([], "");
+      return;
+    }
+
+    const { code: finalCode } = preprocessCode(code);
+    sourceRef.current = finalCode;
+    setRunning(true);
 
     try {
       const result = await compileAndRun(finalCode, "");
@@ -165,10 +233,6 @@ export default function CPlayground() {
       const stdout = result.run?.stdout || "";
       appendOutputDiff("", stdout);
       setLastStdout(stdout);
-
-      // If exit code is 0 and no scanf-style trailing wait, we still don't know if it wanted input.
-      // Heuristic: if the program produced output without reading input AND exited cleanly,
-      // assume it's waiting for input (since we sent empty stdin). User can stop with Stop button.
       setAwaitingInput(true);
     } catch (e) {
       setErrorMsg(e instanceof Error ? e.message : String(e));
@@ -180,11 +244,21 @@ export default function CPlayground() {
 
   async function submitInput(value: string) {
     if (!value && value !== "") return;
-    const newBuffer = stdinBuffer + value + "\n";
-    setStdinBuffer(newBuffer);
     setLines((prev) => [...prev, { kind: "in", text: value }]);
     setInputValue("");
     setAwaitingInput(false);
+
+    if (isPython) {
+      const nextInputs = [...pyInputs, value];
+      setPyInputs(nextInputs);
+      setLines((prev) => [...prev, { kind: "info", text: "" }]);
+      // Re-run from scratch with the extended input list; only new output is shown.
+      await runPythonWith(nextInputs, lastStdout);
+      return;
+    }
+
+    const newBuffer = stdinBuffer + value + "\n";
+    setStdinBuffer(newBuffer);
     setRunning(true);
 
     try {
@@ -198,8 +272,6 @@ export default function CPlayground() {
       const stdout = result.run?.stdout || "";
       appendOutputDiff(lastStdout, stdout);
       setLastStdout(stdout);
-      // Hosted compilers can't distinguish "blocked on scanf" from "exited",
-      // so we always keep the input prompt open. User clicks Stop when done.
       setAwaitingInput(true);
     } catch (e) {
       setErrorMsg(e instanceof Error ? e.message : String(e));
@@ -217,16 +289,25 @@ export default function CPlayground() {
   }
 
   function reset() {
-    setCode(DEFAULT_CODE);
-    setSourceTitle("Scratch C Program");
-    setLines([]);
-    setStdinBuffer("");
-    setLastStdout("");
-    setErrorMsg(null);
-    setFinished(false);
-    setAwaitingInput(false);
-    sessionStorage.removeItem(PLAYGROUND_CODE_KEY);
-    sessionStorage.removeItem(PLAYGROUND_TITLE_KEY);
+    if (isPython) {
+      setPyCode(DEFAULT_PY_CODE);
+      sessionStorage.removeItem(PLAYGROUND_PY_KEY);
+    } else {
+      setCode(DEFAULT_CODE);
+      setSourceTitle("Scratch C Program");
+      sessionStorage.removeItem(PLAYGROUND_CODE_KEY);
+      sessionStorage.removeItem(PLAYGROUND_TITLE_KEY);
+    }
+    resetRunState();
+  }
+
+  function switchLanguage(next: Lang) {
+    if (next === language) return;
+    setLanguage(next);
+    resetRunState();
+    setRunning(false);
+    if (next === "python") setSourceTitle("Scratch Python Program");
+    else setSourceTitle("Scratch C Program");
   }
 
   const idle = !running && !awaitingInput && !finished && !errorMsg;
@@ -248,28 +329,50 @@ export default function CPlayground() {
                 <Terminal className="h-5 w-5 text-primary" />
               </div>
               <div className="min-w-0">
-                <h1 className="text-2xl font-bold leading-tight text-foreground">C Playground</h1>
+                <h1 className="text-2xl font-bold leading-tight text-foreground">
+                  {isPython ? "Python Playground" : "C Playground"}
+                </h1>
                 <p className="mt-1 break-words text-sm text-muted-foreground">{sourceTitle}</p>
               </div>
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-2 sm:flex">
-            <Button variant="outline" onClick={reset} disabled={running}>
-              <RotateCcw className="mr-2 h-4 w-4" />
-              Reset
-            </Button>
-            {awaitingInput || running ? (
-              <Button variant="destructive" onClick={stop} disabled={running}>
-                <Square className="mr-2 h-4 w-4" />
-                Stop
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+            <div className="inline-flex rounded-md border border-border bg-card p-0.5">
+              {(["c", "python"] as Lang[]).map((lang) => (
+                <button
+                  key={lang}
+                  type="button"
+                  onClick={() => switchLanguage(lang)}
+                  disabled={running}
+                  className={`rounded-[5px] px-3 py-1.5 text-xs font-medium transition-colors ${
+                    language === lang
+                      ? "bg-primary text-primary-foreground"
+                      : "text-muted-foreground hover:text-foreground"
+                  }`}
+                >
+                  {lang === "c" ? "C" : "Python"}
+                </button>
+              ))}
+            </div>
+
+            <div className="grid grid-cols-2 gap-2 sm:flex">
+              <Button variant="outline" onClick={reset} disabled={running}>
+                <RotateCcw className="mr-2 h-4 w-4" />
+                Reset
               </Button>
-            ) : (
-              <Button onClick={start} disabled={!code.trim()}>
-                <Play className="mr-2 h-4 w-4" />
-                Run
-              </Button>
-            )}
+              {awaitingInput || running ? (
+                <Button variant="destructive" onClick={stop} disabled={running}>
+                  <Square className="mr-2 h-4 w-4" />
+                  Stop
+                </Button>
+              ) : (
+                <Button onClick={start} disabled={!activeCode.trim()}>
+                  <Play className="mr-2 h-4 w-4" />
+                  Run
+                </Button>
+              )}
+            </div>
           </div>
         </div>
 
@@ -281,7 +384,7 @@ export default function CPlayground() {
                 <span className="h-3 w-3 rounded-full bg-yellow-500" />
                 <span className="h-3 w-3 rounded-full bg-green-500" />
               </div>
-              <span className="font-mono text-xs text-muted-foreground">main.c</span>
+              <span className="font-mono text-xs text-muted-foreground">{isPython ? "main.py" : "main.c"}</span>
             </div>
 
             <div className="grid min-h-[420px] grid-cols-[2.75rem_minmax(0,1fr)] bg-[#1e1e1e] sm:min-h-[520px] sm:grid-cols-[3.25rem_minmax(0,1fr)]">
@@ -291,14 +394,14 @@ export default function CPlayground() {
                 ))}
               </div>
               <textarea
-                value={code}
+                value={activeCode}
                 onChange={(e) => {
-                  setCode(e.target.value);
-                  setSourceTitle((cur) => cur || "Scratch C Program");
+                  setActiveCode(e.target.value);
+                  setSourceTitle((cur) => cur || (isPython ? "Scratch Python Program" : "Scratch C Program"));
                 }}
                 spellCheck={false}
                 className="min-h-[420px] resize-none border-0 bg-[#1e1e1e] p-3 font-mono text-sm leading-6 text-slate-100 outline-none selection:bg-primary/40 sm:min-h-[520px] sm:p-4"
-                aria-label="C source code editor"
+                aria-label={isPython ? "Python source code editor" : "C source code editor"}
               />
             </div>
           </section>
@@ -310,7 +413,15 @@ export default function CPlayground() {
                 <span className="font-mono text-xs text-slate-300">terminal</span>
               </div>
               <span className="font-mono text-xs text-slate-500">
-                {running ? "running…" : awaitingInput ? "waiting for input" : finished ? "exited" : errorMsg ? "error" : "idle"}
+                {running
+                  ? status || "running…"
+                  : awaitingInput
+                    ? "waiting for input"
+                    : finished
+                      ? "exited"
+                      : errorMsg
+                        ? "error"
+                        : "idle"}
               </span>
             </div>
 
@@ -339,6 +450,7 @@ export default function CPlayground() {
                       );
                     }
                     if (line.kind === "info") {
+                      if (!line.text) return null;
                       return <div key={i} className="text-slate-500">{line.text}</div>;
                     }
                     return (
@@ -372,7 +484,7 @@ export default function CPlayground() {
                   {running && !awaitingInput && (
                     <div className="mt-2 flex items-center gap-2 text-slate-500">
                       <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                      <span className="text-xs">running…</span>
+                      <span className="text-xs">{status || "running…"}</span>
                     </div>
                   )}
 
