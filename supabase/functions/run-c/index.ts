@@ -4,7 +4,18 @@ const corsHeaders = {
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
-const WANDBOX_URL = "https://wandbox.org/api/compile.json";
+const GODBOLT_URL = "https://godbolt.org/api/compiler/cg133/compile";
+
+type TextLine = { text?: string };
+
+const joinLines = (lines?: TextLine[]) =>
+  Array.isArray(lines) ? lines.map((l) => l?.text ?? "").join("\n") : "";
+
+const json = (body: unknown, status = 200) =>
+  new Response(JSON.stringify(body), {
+    status,
+    headers: { ...corsHeaders, "Content-Type": "application/json" },
+  });
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -15,57 +26,52 @@ Deno.serve(async (req) => {
     const body = await req.json().catch(() => ({}));
     const code: string = body.source_code || body.code || "";
     if (!code.trim()) {
-      return new Response(JSON.stringify({ error: "source_code is required" }), {
-        status: 400,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      return json({ error: "source_code is required" }, 400);
     }
 
-    const upstream = await fetch(WANDBOX_URL, {
+    const upstream = await fetch(GODBOLT_URL, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", Accept: "application/json" },
       body: JSON.stringify({
-        compiler: body.compiler || "gcc-head-c",
-        code,
-        stdin: body.stdin || "",
-        "compiler-option-raw": "",
-        "runtime-option-raw": "",
-        save: false,
+        source: code,
+        lang: "c",
+        options: {
+          userArguments: "-O2 -fdiagnostics-color=never",
+          executeParameters: { args: [], stdin: body.stdin || "" },
+          compilerOptions: { executorRequest: true },
+          filters: { execute: true },
+        },
       }),
     });
 
     const rawText = await upstream.text();
-    let data: Record<string, unknown> = {};
+    let data: Record<string, any>;
     try {
       data = JSON.parse(rawText);
     } catch {
-      data = {};
-      if (!upstream.ok) {
-        return new Response(
-          JSON.stringify({ error: `Compiler service error (HTTP ${upstream.status}): ${rawText.slice(0, 300)}` }),
-          { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
-        );
-      }
+      return json({
+        error: `Compiler service error (HTTP ${upstream.status}): ${rawText.slice(0, 300)}`,
+      });
     }
 
-    return new Response(
-      JSON.stringify({
-        upstream: { provider: "wandbox", status: upstream.status },
-        compile: { output: data.compiler_message || data.compiler_error || "" },
-        run: {
-          stdout: data.program_output || "",
-          stderr: data.program_error || "",
-          output: data.program_message || "",
-          code: data.status !== undefined ? Number(data.status) : null,
-          signal: data.signal || null,
-        },
-      }),
-      { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
-    );
+    const build = data.buildResult ?? {};
+    const buildFailed = typeof build.code === "number" && build.code !== 0;
+    const compileOutput = buildFailed
+      ? [joinLines(build.stderr), joinLines(build.stdout)].filter(Boolean).join("\n")
+      : "";
+
+    return json({
+      upstream: { provider: "godbolt", status: upstream.status },
+      compile: { output: compileOutput },
+      run: {
+        stdout: joinLines(data.stdout),
+        stderr: joinLines(data.stderr),
+        output: joinLines(data.stdout),
+        code: typeof data.code === "number" ? data.code : null,
+        signal: data.timedOut ? "TIMEOUT" : null,
+      },
+    });
   } catch (error) {
-    return new Response(
-      JSON.stringify({ error: error instanceof Error ? error.message : String(error) }),
-      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } },
-    );
+    return json({ error: error instanceof Error ? error.message : String(error) }, 500);
   }
 });
